@@ -13,6 +13,17 @@ const { exec, spawn } = require('child_process');
 // Render는 PORT 환경변수를 주입함
 const PORT = process.env.PORT || 3000;
 
+// ─── 메타데이터 캐시 (5분 TTL) ────────────────────────────
+const metaCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+function getCached(igurl) {
+  const entry = metaCache.get(igurl);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) { metaCache.delete(igurl); return null; }
+  return entry.data;
+}
+function setCache(igurl, data) { metaCache.set(igurl, { data, ts: Date.now() }); }
+
 // ─── yt-dlp 경로 결정 ────────────────────────────────────
 // Windows: 폴더 내 yt-dlp.exe 우선
 // Linux(Render): pip 설치된 yt-dlp (시스템 PATH)
@@ -142,6 +153,47 @@ function handleStream(req, res) {
   req.on('close', () => child.kill());
 }
 
+// ─── quickstream: 메타데이터 없이 바로 스트리밍 (일괄 다운로드용) ──
+function handleQuickStream(req, res) {
+  const qs         = parseUrl(req.url).searchParams;
+  const igurl      = qs.get('igurl');
+  const idx        = parseInt(qs.get('idx') || '1', 10);
+  const quality    = qs.get('q') || 'low'; // low=최저화질, best=최고화질
+  const isDownload = qs.get('dl') === '1';
+
+  if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
+
+  // 최저화질: worst[ext=mp4] / 최고화질: best[ext=mp4]
+  const fmt = quality === 'best'
+    ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+    : 'worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/worst';
+
+  console.log(`[quickstream] idx=${idx} q=${quality} ${igurl}`);
+
+  const args = ['--playlist-items', String(idx), '--format', fmt, '-o', '-', '--no-warnings', igurl];
+  const child = spawn(YT_DLP_BIN, args);
+  let headerSent = false;
+
+  child.stdout.once('data', () => {
+    if (headerSent) return;
+    headerSent = true;
+    const headers = {
+      'Content-Type': 'video/mp4',
+      'Access-Control-Allow-Origin': '*',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    };
+    if (isDownload) headers['Content-Disposition'] = `attachment; filename="instagram_${idx}.mp4"`;
+    res.writeHead(200, headers);
+  });
+
+  child.stdout.pipe(res);
+  child.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[quickstream]', m); });
+  child.on('error', (e) => { if (!headerSent && !res.headersSent) { res.writeHead(500); res.end(e.message); } });
+  child.on('close', (code) => { if (code !== 0 && !headerSent) { res.writeHead(500); res.end('yt-dlp 실패'); } });
+  req.on('close', () => child.kill());
+}
+
 // ─── 썸네일 프록시 ────────────────────────────────────────
 function handleThumb(req, res) {
   const src = parseUrl(req.url).searchParams.get('url');
@@ -185,6 +237,7 @@ const server = http.createServer(async (req, res) => {
 
   if      (pathname === '/thumb')       handleThumb(req, res);
   else if (pathname === '/stream')      handleStream(req, res);
+  else if (pathname === '/quickstream') handleQuickStream(req, res);
   else if (pathname === '/msec') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ msec: Date.now() / 1000 }));
@@ -199,7 +252,14 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ success: false, html: '올바른 인스타그램 URL이 아닙니다.' }));
         }
+        const cached = getCached(target_url);
+        if (cached) {
+          console.log('[cache] 히트:', target_url);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(cached));
+        }
         const result = await getMediaInfo(target_url);
+        if (result.success) setCache(target_url, result);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {
