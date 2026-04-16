@@ -672,7 +672,14 @@
   </div>
 
   <script>
-    const API_CONVERT = '/api/convert';
+    // ── Render 배포 후 아래 URL을 실제 주소로 교체하세요 ──
+    const RENDER_URL = 'https://mjdownloader.onrender.com';
+
+    // 로컬이면 상대경로, GitHub Pages 등 외부면 Render URL 사용
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const BACKEND = isLocal ? '' : RENDER_URL;
+
+    const API_CONVERT = BACKEND + '/api/convert';
 
     // ════════════════════════════════════════════════
     //  일괄 다운로드 기능
@@ -877,7 +884,7 @@
     // 썸네일 URL → 서버 /thumb 경유 (IP 잠금 우회)
     function thumbUrl(rawUrl) {
       if (!rawUrl) return '';
-      return '/thumb?url=' + encodeURIComponent(rawUrl);
+      return BACKEND + '/thumb?url=' + encodeURIComponent(rawUrl);
     }
 
     // yt-dlp 스트림 URL 생성: 서버가 yt-dlp로 직접 파이프 → IP 잠금 우회
@@ -889,7 +896,7 @@
       const igurl = link.igurl || '';
       const idx   = link.index || 1;
       const fmt   = link.fmtId ? encodeURIComponent(link.fmtId + '/best') : 'best[ext%3Dmp4]%2Fbest';
-      return `/stream?igurl=${encodeURIComponent(igurl)}&idx=${idx}&fmt=${fmt}${forDownload ? '&dl=1' : ''}`;
+      return `${BACKEND}/stream?igurl=${encodeURIComponent(igurl)}&idx=${idx}&fmt=${fmt}${forDownload ? '&dl=1' : ''}`;
     }
 
     // ── 미리보기 플레이어 ──────────────────────────────────
@@ -998,7 +1005,7 @@
 
         // 썸네일 아이콘: 이미지 있으면 실제 화면, 없으면 이모지
         const thumbHtml = link.thumbnail
-          ? `<img src="/thumb?url=${encodeURIComponent(link.thumbnail)}" alt="썸네일" onerror="this.parentElement.innerHTML='${icon}'">
+          ? `<img src="${thumbUrl(link.thumbnail)}" alt="썸네일" onerror="this.parentElement.innerHTML='${icon}'">
              ${type === 'video' ? '<span class="play-badge">▶</span>' : ''}`
           : icon;
 

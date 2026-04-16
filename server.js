@@ -1,10 +1,7 @@
 /**
  * Instagram 다운로더 - yt-dlp 기반 프록시 서버
- * 실행: node server.js
- * 접속: http://localhost:3000
- *
- * yt-dlp.exe 를 이 폴더에 넣으면 자동 인식
- * 다운로드: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+ * 로컬 실행: node server.js  →  http://localhost:3000
+ * Render 배포: render.yaml 참고
  */
 
 const http   = require('http');
@@ -13,12 +10,24 @@ const path   = require('path');
 const urlMod = require('url');
 const { exec, spawn } = require('child_process');
 
-const PORT = 3000;
+// Render는 PORT 환경변수를 주입함
+const PORT = process.env.PORT || 3000;
 
-// ─── yt-dlp 경로 ─────────────────────────────────────────
-const LOCAL_EXE  = path.join(__dirname, 'yt-dlp.exe');
-const YT_DLP_BIN = fs.existsSync(LOCAL_EXE) ? LOCAL_EXE : 'yt-dlp';
-const YT_DLP_CMD = fs.existsSync(LOCAL_EXE) ? `"${LOCAL_EXE}"` : 'yt-dlp';
+// ─── yt-dlp 경로 (Windows .exe → Linux 바이너리 → 시스템 PATH 순) ───
+const LOCAL_EXE = path.join(__dirname, 'yt-dlp.exe'); // Windows
+const LOCAL_BIN = path.join(__dirname, 'yt-dlp');     // Linux (Render 빌드)
+
+let YT_DLP_BIN, YT_DLP_CMD;
+if (fs.existsSync(LOCAL_EXE)) {
+  YT_DLP_BIN = LOCAL_EXE;
+  YT_DLP_CMD = `"${LOCAL_EXE}"`;
+} else if (fs.existsSync(LOCAL_BIN)) {
+  YT_DLP_BIN = LOCAL_BIN;
+  YT_DLP_CMD = `"${LOCAL_BIN}"`;
+} else {
+  YT_DLP_BIN = 'yt-dlp';
+  YT_DLP_CMD = 'yt-dlp';
+}
 
 function checkYtDlp() {
   return new Promise((resolve) => {
