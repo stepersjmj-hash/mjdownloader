@@ -94,14 +94,19 @@ function getMediaInfo(instagramUrl) {
           if (isImg && item.url) {
             links.push({ url: item.url, quality: 'Original', type, index: idx, igurl: instagramUrl, thumbnail: itemThumb });
           } else if (item.formats && item.formats.length > 0) {
-            const vf = item.formats.filter(f => f.vcodec && f.vcodec !== 'none');
+            // 영상+음성이 이미 합쳐진(muxed) 포맷만 선택 — ffmpeg 없이 재생 가능
+            const vf = item.formats.filter(f =>
+              f.vcodec && f.vcodec !== 'none' &&
+              f.acodec && f.acodec !== 'none'
+            );
             vf.sort((a, b) => (b.height || 0) - (a.height || 0));
             vf.forEach(f => {
               const q = f.height ? `${f.height}p` : (f.format_note || 'HD');
               links.push({ quality: q, type: 'video', index: idx, igurl: instagramUrl, fmtId: f.format_id, thumbnail: itemThumb });
             });
             if (!vf.length) {
-              links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: 'best', thumbnail: itemThumb });
+              // muxed 포맷이 없으면 yt-dlp가 자체 선택하도록 best 포맷 문자열 사용
+              links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best', thumbnail: itemThumb });
             }
           } else {
             links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: 'best', thumbnail: itemThumb });
@@ -122,7 +127,7 @@ function handleStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
   const igurl      = qs.get('igurl');
   const idx        = parseInt(qs.get('idx') || '1', 10);
-  const fmt        = qs.get('fmt') || 'best[ext=mp4]/best';
+  const fmt        = qs.get('fmt') || 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
   const isDownload = qs.get('dl') === '1';
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
@@ -163,10 +168,11 @@ function handleQuickStream(req, res) {
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
-  // 최저화질: worst[ext=mp4] / 최고화질: best[ext=mp4]
+  // ffmpeg 없이도 재생 가능한 muxed 스트림만 선택 (+ 연산자 사용 금지)
+  // worst[height]/best[height] → 영상+음성이 이미 합쳐진 포맷만 대상
   const fmt = quality === 'best'
-    ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-    : 'worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/worst';
+    ? 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best'
+    : 'worst[ext=mp4][vcodec!=none][acodec!=none]/worst[ext=mp4]/worst';
 
   console.log(`[quickstream] idx=${idx} q=${quality} ${igurl}`);
 
