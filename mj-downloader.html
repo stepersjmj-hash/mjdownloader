@@ -414,6 +414,178 @@
       font-size: 14px;
     }
 
+    /* ── 일괄 다운로드 카드 ─────────────────────────── */
+    .bulk-card {
+      background: white;
+      border-radius: 20px;
+      padding: 28px 36px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      margin-bottom: 20px;
+    }
+
+    .bulk-card h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #444;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bulk-card h2::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 2px;
+    }
+
+    .bulk-textarea {
+      width: 100%;
+      height: 110px;
+      padding: 12px 14px;
+      border: 2px solid #e1e5eb;
+      border-radius: 12px;
+      font-size: 13px;
+      color: #333;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+
+    .bulk-textarea:focus { border-color: #764ba2; }
+    .bulk-textarea::placeholder { color: #bbb; }
+
+    .bulk-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-extract {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-extract:hover { opacity: 0.88; }
+
+    .btn-clear-text {
+      padding: 10px 16px;
+      background: #f0f2f5;
+      color: #666;
+      border: 2px solid #e1e5eb;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-clear-text:hover { background: #e1e5eb; }
+
+    /* URL 체크박스 리스트 */
+    .url-list {
+      margin-top: 16px;
+      display: none;
+    }
+
+    .url-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .url-list-header span {
+      font-size: 13px;
+      color: #555;
+      font-weight: 600;
+    }
+
+    .btn-toggle-all {
+      font-size: 12px;
+      color: #764ba2;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      padding: 2px 6px;
+    }
+    .btn-toggle-all:hover { text-decoration: underline; }
+
+    .url-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      background: #f8f9fb;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      transition: background 0.15s;
+    }
+    .url-item:hover { background: #f0f2ff; }
+
+    .url-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #764ba2;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .url-item label {
+      font-size: 12px;
+      color: #444;
+      cursor: pointer;
+      word-break: break-all;
+      flex: 1;
+    }
+
+    .url-item .url-status {
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 60px;
+      text-align: right;
+    }
+    .url-item .url-status.done    { color: #16a34a; }
+    .url-item .url-status.fail    { color: #dc2626; }
+    .url-item .url-status.loading { color: #764ba2; }
+
+    .bulk-download-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .btn-bulk-dl {
+      padding: 11px 22px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-bulk-dl:hover { opacity: 0.88; }
+    .btn-bulk-dl:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .bulk-progress {
+      font-size: 12px;
+      color: #888;
+    }
+
     @media (max-width: 550px) {
       .search-box {
         flex-wrap: wrap;
@@ -424,6 +596,7 @@
       .btn-paste, .btn-download {
         flex: 1;
       }
+      .bulk-card { padding: 20px; }
     }
   </style>
 </head>
@@ -432,6 +605,32 @@
     <div class="logo">
       <h1>📸 Instagram 다운로더</h1>
       <p>인스타그램 비디오 &amp; 사진 무료 다운로드</p>
+    </div>
+
+    <!-- ── 일괄 URL 다운로드 카드 ── -->
+    <div class="bulk-card">
+      <h2>일괄 다운로드</h2>
+      <textarea
+        class="bulk-textarea"
+        id="bulkText"
+        placeholder="텍스트를 붙여넣으세요. 인스타그램 URL을 자동으로 찾아냅니다.&#10;예) 오늘 찍은 영상 https://www.instagram.com/p/abc123/ 정말 예쁘다 https://www.instagram.com/reel/xyz456/"
+      ></textarea>
+      <div class="bulk-actions">
+        <button class="btn-extract" onclick="extractUrls()">🔍 URL 추출</button>
+        <button class="btn-clear-text" onclick="clearBulk()">초기화</button>
+      </div>
+
+      <div class="url-list" id="urlList">
+        <div class="url-list-header">
+          <span id="urlListTitle">0개 URL 발견</span>
+          <button class="btn-toggle-all" onclick="toggleAll()">전체 선택/해제</button>
+        </div>
+        <div id="urlListItems"></div>
+        <div class="bulk-download-bar">
+          <button class="btn-bulk-dl" id="bulkDlBtn" onclick="bulkDownload()">⬇ 선택한 URL 다운로드</button>
+          <span class="bulk-progress" id="bulkProgress"></span>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -474,6 +673,147 @@
 
   <script>
     const API_CONVERT = '/api/convert';
+
+    // ════════════════════════════════════════════════
+    //  일괄 다운로드 기능
+    // ════════════════════════════════════════════════
+
+    // Instagram URL 추출 정규식
+    const IG_URL_RE = /https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|tv|stories\/[^/]+)\/[A-Za-z0-9_\-]+\/?/g;
+
+    function extractUrls() {
+      const text  = document.getElementById('bulkText').value;
+      const found = [...new Set(text.match(IG_URL_RE) || [])]; // 중복 제거
+
+      const listEl  = document.getElementById('urlList');
+      const itemsEl = document.getElementById('urlListItems');
+      const titleEl = document.getElementById('urlListTitle');
+
+      itemsEl.innerHTML = '';
+
+      if (found.length === 0) {
+        listEl.style.display = 'block';
+        titleEl.textContent  = '인스타그램 URL을 찾지 못했습니다.';
+        document.getElementById('bulkDlBtn').disabled = true;
+        return;
+      }
+
+      found.forEach((url, i) => {
+        const id   = `url_cb_${i}`;
+        const item = document.createElement('div');
+        item.className  = 'url-item';
+        item.dataset.url = url;
+        item.innerHTML  = `
+          <input type="checkbox" id="${id}" value="${url}" checked>
+          <label for="${id}">${url}</label>
+          <span class="url-status" id="status_${i}"></span>
+        `;
+        itemsEl.appendChild(item);
+      });
+
+      titleEl.textContent = `${found.length}개 URL 발견`;
+      document.getElementById('bulkDlBtn').disabled = false;
+      listEl.style.display = 'block';
+    }
+
+    function clearBulk() {
+      document.getElementById('bulkText').value    = '';
+      document.getElementById('urlList').style.display = 'none';
+      document.getElementById('urlListItems').innerHTML = '';
+      document.getElementById('bulkProgress').textContent = '';
+    }
+
+    function toggleAll() {
+      const boxes = document.querySelectorAll('#urlListItems input[type="checkbox"]');
+      const allChecked = [...boxes].every(b => b.checked);
+      boxes.forEach(b => b.checked = !allChecked);
+    }
+
+    // 최저 해상도 링크 1개 선택
+    function pickLowestQuality(links) {
+      const videos = links.filter(l => l.type === 'video' || !l.type);
+      if (!videos.length) return links[0] || null;
+      // height 기준 오름차순, 0(미확인)은 맨 뒤
+      videos.sort((a, b) => {
+        const ha = parseInt(a.quality) || 9999;
+        const hb = parseInt(b.quality) || 9999;
+        return ha - hb;
+      });
+      return videos[0];
+    }
+
+    async function bulkDownload() {
+      const checked = [...document.querySelectorAll('#urlListItems input[type="checkbox"]:checked')];
+      if (!checked.length) {
+        alert('다운로드할 URL을 선택해주세요.');
+        return;
+      }
+
+      const btn      = document.getElementById('bulkDlBtn');
+      const progress = document.getElementById('bulkProgress');
+      btn.disabled   = true;
+
+      const items = document.querySelectorAll('#urlListItems .url-item');
+      // status span 인덱스 맵
+      const statusMap = {};
+      items.forEach((el, i) => {
+        statusMap[el.dataset.url] = document.getElementById(`status_${i}`);
+      });
+
+      let done = 0;
+      const total = checked.length;
+
+      for (const cb of checked) {
+        const igurl   = cb.value;
+        const statusEl = statusMap[igurl];
+        progress.textContent = `처리 중 ${done + 1} / ${total}`;
+        if (statusEl) { statusEl.textContent = '⏳'; statusEl.className = 'url-status loading'; }
+
+        try {
+          const resp = await fetch(API_CONVERT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_url: igurl }),
+          });
+          const data = await resp.json();
+
+          if (!data.success || !data.links?.length) {
+            throw new Error(data.html || '실패');
+          }
+
+          const link = pickLowestQuality(data.links);
+          if (!link) throw new Error('링크 없음');
+
+          // 다운로드 트리거
+          const dlUrl  = streamUrl(link, true);
+          const anchor = document.createElement('a');
+          anchor.href  = dlUrl;
+          anchor.download = `instagram_${done + 1}_${link.quality || 'low'}.mp4`;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+
+          if (statusEl) { statusEl.textContent = '✅ 완료'; statusEl.className = 'url-status done'; }
+        } catch (e) {
+          console.error('[bulk]', igurl, e.message);
+          if (statusEl) { statusEl.textContent = '❌ 실패'; statusEl.className = 'url-status fail'; }
+        }
+
+        done++;
+        // 다음 다운로드 전 1.5초 대기 (서버 부하 방지)
+        if (done < total) await new Promise(r => setTimeout(r, 1500));
+      }
+
+      progress.textContent = `완료 ${done} / ${total}`;
+      btn.disabled = false;
+    }
+
+    // Enter 키로도 URL 추출 트리거
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('bulkText').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.ctrlKey) extractUrls();
+      });
+    });
     const API_MSEC = '/msec';
 
     async function getServerTime() {
