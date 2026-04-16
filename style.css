@@ -1,0 +1,591 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 20px;
+}
+
+.container {
+  width: 100%;
+  max-width: 750px;
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.logo h1 {
+  color: white;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.logo p {
+  color: rgba(255,255,255,0.8);
+  margin-top: 6px;
+  font-size: 0.95rem;
+}
+
+.card {
+  background: white;
+  border-radius: 20px;
+  padding: 36px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.search-box {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search-box input {
+  flex: 1;
+  padding: 14px 18px;
+  border: 2px solid #e1e5eb;
+  border-radius: 12px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+  color: #333;
+}
+
+.search-box input:focus {
+  border-color: #764ba2;
+}
+
+.search-box input::placeholder {
+  color: #aaa;
+}
+
+.btn-download {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.btn-download:hover {
+  opacity: 0.9;
+}
+
+.btn-download:active {
+  transform: scale(0.98);
+}
+
+.btn-download:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-paste {
+  padding: 14px 16px;
+  background: #f0f2f5;
+  color: #555;
+  border: 2px solid #e1e5eb;
+  border-radius: 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-paste:hover {
+  background: #e1e5eb;
+}
+
+.status {
+  text-align: center;
+  padding: 16px;
+  border-radius: 12px;
+  margin-top: 16px;
+  font-size: 14px;
+  display: none;
+}
+
+.status.loading {
+  display: block;
+  background: #f0f4ff;
+  color: #764ba2;
+}
+
+.status.error {
+  display: block;
+  background: #fff0f0;
+  color: #e53e3e;
+}
+
+.results {
+  margin-top: 24px;
+}
+
+.result-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-title::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 2px;
+}
+
+.media-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #f8f9fb;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.media-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.media-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.media-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.media-icon .play-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.28);
+  font-size: 20px;
+  border-radius: 10px;
+}
+
+.media-icon.video {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.media-icon.image {
+  background: linear-gradient(135deg, #f6d365, #fda085);
+}
+
+.media-icon.audio {
+  background: linear-gradient(135deg, #84fab0, #8fd3f4);
+}
+
+.media-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #444;
+}
+
+.media-quality {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.btn-dl {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-dl:hover {
+  opacity: 0.85;
+}
+
+.thumbnail-container {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.thumbnail-container img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+/* 미리보기 플레이어 */
+.preview-container {
+  margin-bottom: 20px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  position: relative;
+}
+
+.preview-container video {
+  width: 100%;
+  max-height: 420px;
+  display: block;
+  border-radius: 14px;
+}
+
+.preview-container img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  display: block;
+}
+
+.preview-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.preview-nav button {
+  padding: 6px 16px;
+  border: 1.5px solid #d0d5dd;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #444;
+  transition: background 0.15s;
+}
+
+.preview-nav button:hover:not(:disabled) { background: #f0f0f0; }
+.preview-nav button:disabled { opacity: 0.35; cursor: default; }
+
+.preview-counter {
+  font-size: 13px;
+  color: #888;
+  min-width: 60px;
+  text-align: center;
+}
+
+.notice {
+  margin-top: 20px;
+  padding: 14px 18px;
+  background: #fffbf0;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(118,75,162,0.3);
+  border-top-color: #764ba2;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.how-to {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+}
+
+.how-to h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 14px;
+}
+
+.steps {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.step {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-text {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.cors-notice {
+  margin-top: 20px;
+  padding: 14px 18px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #166534;
+  line-height: 1.6;
+}
+
+.cors-notice strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+/* ── 일괄 다운로드 카드 ─────────────────────────── */
+.bulk-card {
+  background: white;
+  border-radius: 20px;
+  padding: 28px 36px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  margin-bottom: 20px;
+}
+
+.bulk-card h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #444;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-card h2::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 2px;
+}
+
+.bulk-textarea {
+  width: 100%;
+  height: 110px;
+  padding: 12px 14px;
+  border: 2px solid #e1e5eb;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #333;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.bulk-textarea:focus { border-color: #764ba2; }
+.bulk-textarea::placeholder { color: #bbb; }
+
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-extract {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-extract:hover { opacity: 0.88; }
+
+.btn-clear-text {
+  padding: 10px 16px;
+  background: #f0f2f5;
+  color: #666;
+  border: 2px solid #e1e5eb;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-clear-text:hover { background: #e1e5eb; }
+
+/* URL 체크박스 리스트 */
+.url-list {
+  margin-top: 16px;
+  display: none;
+}
+
+.url-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.url-list-header span {
+  font-size: 13px;
+  color: #555;
+  font-weight: 600;
+}
+
+.btn-toggle-all {
+  font-size: 12px;
+  color: #764ba2;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+.btn-toggle-all:hover { text-decoration: underline; }
+
+.url-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #f8f9fb;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  transition: background 0.15s;
+}
+.url-item:hover { background: #f0f2ff; }
+
+.url-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #764ba2;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.url-item label {
+  font-size: 12px;
+  color: #444;
+  cursor: pointer;
+  word-break: break-all;
+  flex: 1;
+}
+
+.url-item .url-status {
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 60px;
+  text-align: right;
+}
+.url-item .url-status.done    { color: #16a34a; }
+.url-item .url-status.fail    { color: #dc2626; }
+.url-item .url-status.loading { color: #764ba2; }
+
+.bulk-download-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.btn-bulk-dl {
+  padding: 11px 22px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-bulk-dl:hover { opacity: 0.88; }
+.btn-bulk-dl:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bulk-progress {
+  font-size: 12px;
+  color: #888;
+}
+
+@media (max-width: 550px) {
+  .search-box {
+    flex-wrap: wrap;
+  }
+  .search-box input {
+    width: 100%;
+  }
+  .btn-paste, .btn-download {
+    flex: 1;
+  }
+  .bulk-card { padding: 20px; }
+}

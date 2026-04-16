@@ -281,7 +281,7 @@ const server = http.createServer(async (req, res) => {
     const name = (pathname === '/' || pathname === '') ? 'index.html' : pathname.slice(1);
     fs.readFile(path.join(__dirname, name), (err, data) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
-      const ct = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json' };
+      const ct = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'application/javascript', '.json': 'application/json' };
       res.writeHead(200, { 'Content-Type': ct[path.extname(name)] || 'text/plain' });
       res.end(data);
     });
