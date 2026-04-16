@@ -3,5 +3,5 @@ services:
     name: mjdownloader
     env: node
     plan: free
-    buildCommand: curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp && chmod +x yt-dlp
+    buildCommand: npm install
     startCommand: node server.js

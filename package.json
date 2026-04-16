@@ -4,7 +4,8 @@
   "description": "Instagram 다운로더 서버",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "node scripts/install-ytdlp.js"
   },
   "engines": {
     "node": ">=18"
