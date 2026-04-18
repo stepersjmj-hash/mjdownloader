@@ -388,23 +388,6 @@ body {
   line-height: 1.5;
 }
 
-.cors-notice {
-  margin-top: 20px;
-  padding: 14px 18px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #166534;
-  line-height: 1.6;
-}
-
-.cors-notice strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
 /* ── 일괄 다운로드 카드 ─────────────────────────── */
 .bulk-card {
   background: white;
