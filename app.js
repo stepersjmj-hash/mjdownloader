@@ -1,11 +1,14 @@
 // ── 백엔드 설정 ──────────────────────────────────────────────
-const RENDER_URL = 'https://mjdownloader-fo5w.onrender.com';
+// 페이지가 서빙되는 도메인에서 직접 API 호출 (상대경로)
+//   - 로컬 (localhost)        → 상대경로
+//   - NAS 도메인              → 상대경로 (서버가 프론트도 서빙)
+//   - Render 도메인           → 상대경로 (동일)
+//   - GitHub Pages 등 외부    → REMOTE_BACKEND 사용
+const REMOTE_BACKEND = 'https://mjdownloader-fo5w.onrender.com';
 
-// 같은 Render 도메인이거나 로컬이면 상대경로 사용
-// GitHub Pages 등 외부 호스팅일 때만 RENDER_URL 사용
-const isLocal     = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const isSameHost  = location.hostname.endsWith('.onrender.com');
-const BACKEND     = (isLocal || isSameHost) ? '' : RENDER_URL;
+const host = location.hostname;
+const isGitHubPages = host.endsWith('.github.io');
+const BACKEND = isGitHubPages ? REMOTE_BACKEND : '';
 
 const API_CONVERT = BACKEND + '/api/convert';
 const API_MSEC    = BACKEND + '/msec';

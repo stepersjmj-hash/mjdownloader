@@ -1,0 +1,9 @@
+services:
+  reelsnap:
+    build: .
+    container_name: reelsnap
+    ports:
+      - "3100:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
