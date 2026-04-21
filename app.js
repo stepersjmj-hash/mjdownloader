@@ -1,9 +1,11 @@
 // ── 백엔드 설정 ──────────────────────────────────────────────
-const RENDER_URL = 'https://mjdownloader-bbm5.onrender.com';
+const RENDER_URL = 'https://mjdownloader-fo5w.onrender.com';
 
-// 로컬이면 상대경로, GitHub Pages 등 외부면 Render URL 사용
-const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const BACKEND = isLocal ? '' : RENDER_URL;
+// 같은 Render 도메인이거나 로컬이면 상대경로 사용
+// GitHub Pages 등 외부 호스팅일 때만 RENDER_URL 사용
+const isLocal     = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const isSameHost  = location.hostname.endsWith('.onrender.com');
+const BACKEND     = (isLocal || isSameHost) ? '' : RENDER_URL;
 
 const API_CONVERT = BACKEND + '/api/convert';
 const API_MSEC    = BACKEND + '/msec';
