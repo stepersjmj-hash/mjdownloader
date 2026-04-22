@@ -2,7 +2,6 @@
 .gitignore
 node_modules
 yt-dlp.exe
-yt-dlp
 *.md
 .DS_Store
 Dockerfile
