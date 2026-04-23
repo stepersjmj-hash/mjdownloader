@@ -1,12 +1,14 @@
 /**
- * Instagram 다운로더 - yt-dlp 기반 프록시 서버
+ * Reelsnap 백엔드 — yt-dlp 기반 프록시 서버 (Instagram + YouTube)
  * 로컬 실행: node server.js  →  http://localhost:3000
  * Render 배포: render.yaml 참고
+ * NAS 배포: NAS_DEPLOYMENT.md 참고
  */
 
 const http   = require('http');
 const https  = require('https');
 const fs     = require('fs');
+const os     = require('os');
 const path   = require('path');
 const { exec, spawn } = require('child_process');
 
@@ -150,6 +152,16 @@ function getMediaInfo(instagramUrl) {
 }
 
 // ─── yt-dlp 스트리밍 ──────────────────────────────────────
+// merge 가 필요한 포맷(YouTube 720p+ 의 bv+ba)은 stdout 파이핑 시 MP4 moov atom 이
+// 파일 끝에 쓰여 브라우저 재생 불가. → temp 파일로 다운로드 후 서빙.
+// 나머지 케이스(Instagram, 360p muxed, audio 단일포맷)는 기존 stdout 파이핑 유지.
+
+function isMergeFormat(fmt) {
+  // yt-dlp 포맷 문자열의 '+' 가 분리 스트림 merge 를 의미
+  // URL 인코딩된 경우 %2B 도 포함되어 있을 수 있음
+  return fmt.includes('+') || fmt.toLowerCase().includes('%2b');
+}
+
 function handleStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
   const igurl      = qs.get('igurl');
@@ -161,12 +173,16 @@ function handleStream(req, res) {
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
+  // merge 필요 + mp4 출력 → temp 파일 방식
+  if (ext === 'mp4' && isMergeFormat(fmt)) {
+    return handleStreamTempFile(req, res, { igurl, idx, fmt, ext, fnPrefix, isDownload });
+  }
+
   console.log(`[stream] idx=${idx} fmt=${fmt} ext=${ext} ${igurl}`);
 
   const args = ['--playlist-items', String(idx), '--format', fmt, '--no-warnings'];
-  // 비디오(merge 필요한 포맷) 대응 — mp4 출력 컨테이너로 합침
-  if (ext === 'mp4') args.push('--merge-output-format', 'mp4');
-  if (FFMPEG_PATH)   args.push('--ffmpeg-location', FFMPEG_PATH);
+  if (ext === 'mp4')  args.push('--merge-output-format', 'mp4');
+  if (FFMPEG_PATH)    args.push('--ffmpeg-location', FFMPEG_PATH);
   args.push('-o', '-', igurl);
 
   const child = spawn(YT_DLP_BIN, args);
@@ -193,6 +209,82 @@ function handleStream(req, res) {
   child.on('error', (e) => { if (!headerSent && !res.headersSent) { res.writeHead(500); res.end(e.message); } });
   child.on('close', (code) => { if (code !== 0 && !headerSent) { res.writeHead(500); res.end('yt-dlp 실패'); } });
   req.on('close', () => child.kill());
+}
+
+// ─── yt-dlp 스트리밍 (temp 파일 방식) ─────────────────────
+// merge 가 필요한 포맷을 임시 파일에 먼저 저장한 뒤 브라우저로 전송.
+// moov atom 이 파일 앞쪽에 정상 배치되어 재생 가능.
+function handleStreamTempFile(req, res, opts) {
+  const { igurl, idx, fmt, ext, fnPrefix, isDownload } = opts;
+
+  const uniq    = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  const tmpPath = path.join(os.tmpdir(), `reelsnap_${uniq}.${ext}`);
+
+  console.log(`[stream-temp] idx=${idx} fmt=${fmt} ext=${ext} → ${tmpPath}`);
+
+  const args = [
+    '--playlist-items', String(idx),
+    '--format', fmt,
+    '--merge-output-format', 'mp4',
+    '--no-warnings',
+    '--no-part',
+  ];
+  if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
+  args.push('-o', tmpPath, igurl);
+
+  const child = spawn(YT_DLP_BIN, args);
+  let cleanupDone = false;
+
+  function cleanup() {
+    if (cleanupDone) return;
+    cleanupDone = true;
+    fs.unlink(tmpPath, (err) => {
+      if (!err) console.log('[stream-temp] 삭제:', tmpPath);
+    });
+  }
+
+  child.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[yt-dlp]', m); });
+
+  child.on('error', (e) => {
+    console.error('[stream-temp] spawn 오류:', e.message);
+    if (!res.headersSent) { res.writeHead(500); res.end(e.message); }
+    cleanup();
+  });
+
+  child.on('close', (code) => {
+    if (res.headersSent) return; // 이미 클라이언트 끊김 처리됨
+    if (code !== 0 || !fs.existsSync(tmpPath)) {
+      res.writeHead(500); res.end('yt-dlp 다운로드 실패');
+      cleanup();
+      return;
+    }
+
+    // 파일 완성 → 브라우저로 전송
+    let stat;
+    try { stat = fs.statSync(tmpPath); }
+    catch (e) { res.writeHead(500); res.end('temp 파일 접근 실패'); cleanup(); return; }
+
+    const contentType = ext === 'm4a' ? 'audio/mp4' : 'video/mp4';
+    const headers = {
+      'Content-Type': contentType,
+      'Access-Control-Allow-Origin': '*',
+      'Content-Length': stat.size,
+      'Cache-Control': 'no-cache',
+    };
+    if (isDownload) headers['Content-Disposition'] = `attachment; filename="${fnPrefix}_${idx}.${ext}"`;
+    res.writeHead(200, headers);
+
+    const readStream = fs.createReadStream(tmpPath);
+    readStream.pipe(res);
+    readStream.on('close', cleanup);
+    readStream.on('error', cleanup);
+  });
+
+  // 클라이언트가 중간에 연결 끊으면 yt-dlp 중단 + temp 정리
+  req.on('close', () => {
+    try { child.kill(); } catch {}
+    cleanup();
+  });
 }
 
 // ─── quickstream: 메타데이터 없이 바로 스트리밍 (일괄 다운로드용) ──

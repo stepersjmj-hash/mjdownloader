@@ -56,14 +56,54 @@ https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
 
 ### 2. ffmpeg Linux 바이너리 다운로드 (YouTube 720p+ 필요 시)
 
-brownser 로 아래 URL 접속 → `.tar.xz` 압축 파일 자동 다운로드:
+> Instagram 만 쓸 거면 이 단계 생략 가능. Dockerfile 은 ffmpeg 가 없어도 빌드되도록 설계됨 (YouTube 720p+ 만 비활성화).
+
+**① 다운로드**
+
+브라우저로 아래 URL 접속 → `ffmpeg-release-amd64-static.tar.xz` 자동 다운로드 (약 35MB):
 ```
 https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
 ```
 
-7-Zip 등으로 압축 해제 → 내부에 `ffmpeg-X.X.X-amd64-static/ffmpeg` 실행 파일만 꺼내 **`ffmpeg`** (확장자 없음) 라는 이름으로 프로젝트 루트에 배치.
+**② 2단계 압축 해제** (이 부분에서 자주 실수함 — 주의!)
 
-> Instagram 만 쓸 거면 이 단계 생략 가능. Dockerfile 은 ffmpeg 가 없어도 빌드되도록 설계됨 (YouTube 720p+ 만 비활성화).
+`.tar.xz` 는 두 번 풀어야 내용물이 나옵니다. **7-Zip / Bandizip / WinRAR** 필요 (Windows 기본 압축 도구로는 `.tar.xz` 를 못 풂).
+
+1. **1단계**: `ffmpeg-release-amd64-static.tar.xz` 를 7-Zip으로 풀기 → `ffmpeg-release-amd64-static.tar` 생성
+2. **2단계**: 방금 나온 `.tar` 파일을 7-Zip으로 다시 풀기 → **`ffmpeg-7.X-amd64-static/`** 같은 폴더 생성
+
+최종 폴더 안 구성:
+```
+ffmpeg-7.X-amd64-static/
+├── ffmpeg           ← 이것만 필요 (약 80MB, 확장자 없음)
+├── ffprobe          ← 불필요
+├── qt-faststart     ← 불필요
+├── model/           ← 불필요
+├── readme.txt       ← 불필요
+└── ...
+```
+
+**③ `ffmpeg` 바이너리 하나만** 프로젝트 루트로 복사:
+- 전체 폴더를 옮기는 게 **아닙니다**
+- `ffmpeg` 라는 이름의 **단일 실행 파일** 하나만 (확장자 없음)
+- 최종 경로: `C:\Users\stepe\Desktop\mj\mjdownloader\ffmpeg`
+
+**자주 하는 실수** (❌ 하지 말 것)
+- ❌ `.tar.xz` 를 한 번만 풀고 `.tar` 파일을 업로드 → 압축 파일임
+- ❌ `ffmpeg-7.X-amd64-static/` 폴더 통째로 업로드 → yt-dlp가 `/app/ffmpeg` 에서 실행 파일을 찾는데 폴더라 실패
+- ❌ `ffmpeg.exe` 를 NAS에 업로드 → Windows 전용이라 Linux 컨테이너에서 실행 불가
+
+**④ 업로드 후 검증** (컨테이너 터미널에서)
+```bash
+ls -la /app/ffmpeg
+# 기대값:
+# -rwxr-xr-x 1 reelsnap reelsnap 8xxxxxxx ... ffmpeg   ← 앞자리 '-' (파일), 크기 80MB 전후
+
+/app/ffmpeg -version
+# 기대값: ffmpeg version 7.x-static ... 등 정상 출력
+```
+
+폴더라서 `dr-xr-xr-x` 로 시작하거나, 크기가 수십 MB 안 되면 압축 해제/업로드 단계 재확인.
 
 ### 3. NAS에 소스 파일 업로드
 
