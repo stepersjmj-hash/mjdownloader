@@ -10,66 +10,130 @@
   <div class="container">
     <div class="logo">
       <h1>🎬 Reelsnap</h1>
-      <p>인스타그램 비디오 &amp; 사진 무료 다운로드 &nbsp;·&nbsp; by MJ</p>
+      <p>인스타그램 &amp; YouTube 영상/이미지 무료 다운로드 &nbsp;·&nbsp; by MJ</p>
     </div>
 
-    <!-- ── 일괄 URL 다운로드 카드 ── -->
-    <div class="bulk-card">
-      <h2>일괄 다운로드</h2>
-      <textarea
-        class="bulk-textarea"
-        id="bulkText"
-        placeholder="텍스트를 붙여넣으세요. 인스타그램 URL을 자동으로 찾아냅니다.&#10;예) 오늘 찍은 영상 https://www.instagram.com/p/abc123/ 정말 예쁘다 https://www.instagram.com/reel/xyz456/"
-      ></textarea>
-      <div class="bulk-actions">
-        <button class="btn-extract" onclick="extractUrls()">🔍 URL 추출</button>
-        <button class="btn-clear-text" onclick="clearBulk()">초기화</button>
-      </div>
-
-      <div class="url-list" id="urlList">
-        <div class="url-list-header">
-          <span id="urlListTitle">0개 URL 발견</span>
-          <button class="btn-toggle-all" onclick="toggleAll()">전체 선택/해제</button>
-        </div>
-        <div id="urlListItems"></div>
-        <div class="bulk-download-bar">
-          <button class="btn-bulk-dl" id="bulkDlBtn" onclick="bulkDownload()">⬇ 선택한 URL 다운로드</button>
-          <span class="bulk-progress" id="bulkProgress"></span>
-        </div>
-      </div>
+    <!-- ── 플랫폼 탭 ── -->
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-platform="instagram" role="tab">📷 Instagram</button>
+      <button class="tab" data-platform="youtube" role="tab">▶ YouTube</button>
     </div>
 
-    <!-- ── 단일 URL 다운로드 카드 ── -->
-    <div class="card">
-      <div class="search-box">
-        <input type="text" id="urlInput" placeholder="인스타그램 링크를 붙여넣으세요 (예: https://www.instagram.com/p/...)" />
-        <button class="btn-paste" onclick="pasteUrl()" title="클립보드에서 붙여넣기">📋 붙여넣기</button>
-        <button class="btn-download" id="downloadBtn" onclick="startDownload()">다운로드</button>
-      </div>
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- Instagram 섹션                                         -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <section class="platform-section" id="section-instagram" data-platform="instagram">
 
-      <div class="status" id="status"></div>
-      <div class="results" id="results"></div>
+      <!-- ── 일괄 URL 다운로드 카드 ── -->
+      <div class="bulk-card">
+        <h2>일괄 다운로드</h2>
+        <textarea
+          class="bulk-textarea"
+          id="igBulkText"
+          placeholder="텍스트를 붙여넣으세요. 인스타그램 URL을 자동으로 찾아냅니다.&#10;예) 오늘 찍은 영상 https://www.instagram.com/p/abc123/ 정말 예쁘다 https://www.instagram.com/reel/xyz456/"
+        ></textarea>
+        <div class="bulk-actions">
+          <button class="btn-extract" id="igExtractBtn">🔍 URL 추출</button>
+          <button class="btn-clear-text" id="igClearBtn">초기화</button>
+        </div>
 
-      <div class="how-to">
-        <h3>사용 방법</h3>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-text">인스타그램 앱/웹에서 원하는 게시물을 열고 링크를 복사합니다</div>
+        <div class="url-list" id="igUrlList">
+          <div class="url-list-header">
+            <span id="igUrlListTitle">0개 URL 발견</span>
+            <button class="btn-toggle-all" id="igToggleAllBtn">전체 선택/해제</button>
           </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-text">위 입력창에 링크를 붙여넣고 [다운로드] 버튼을 클릭합니다</div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-text">결과에서 원하는 품질을 선택하여 다운로드합니다</div>
+          <div id="igUrlListItems"></div>
+          <div class="bulk-download-bar">
+            <button class="btn-bulk-dl" id="igBulkDlBtn" disabled>⬇ 선택한 URL 다운로드</button>
+            <span class="bulk-progress" id="igBulkProgress"></span>
           </div>
         </div>
       </div>
-    </div>
+
+      <!-- ── 단일 URL 다운로드 카드 ── -->
+      <div class="card">
+        <div class="search-box">
+          <input type="text" id="igUrlInput" placeholder="인스타그램 링크를 붙여넣으세요 (예: https://www.instagram.com/p/...)" />
+          <button class="btn-paste" id="igPasteBtn" title="클립보드에서 붙여넣기">📋 붙여넣기</button>
+          <button class="btn-download" id="igDownloadBtn">다운로드</button>
+        </div>
+
+        <div class="status" id="igStatus"></div>
+        <div class="results" id="igResults"></div>
+
+        <div class="how-to">
+          <h3>사용 방법</h3>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-text">인스타그램 앱/웹에서 원하는 게시물을 열고 링크를 복사합니다</div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-text">위 입력창에 링크를 붙여넣고 [다운로드] 버튼을 클릭합니다</div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-text">결과에서 원하는 품질을 선택하여 다운로드합니다</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- YouTube 섹션                                           -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <section class="platform-section hidden" id="section-youtube" data-platform="youtube">
+
+      <div class="card">
+        <div class="search-box">
+          <input type="text" id="ytUrlInput" placeholder="YouTube 링크를 붙여넣으세요 (예: https://www.youtube.com/watch?v=...)" />
+          <button class="btn-paste" id="ytPasteBtn" title="클립보드에서 붙여넣기">📋 붙여넣기</button>
+        </div>
+
+        <div class="yt-quality-row">
+          <label for="ytQuality">품질 선택:</label>
+          <select id="ytQuality">
+            <option value="360">360p (빠름, ffmpeg 불필요)</option>
+            <option value="720" selected>720p</option>
+            <option value="1080">1080p</option>
+            <option value="best">최고 화질 (4K 포함)</option>
+            <option value="audio">🎵 오디오만 (m4a)</option>
+          </select>
+          <button class="btn-download" id="ytDownloadBtn">다운로드</button>
+        </div>
+
+        <div class="status" id="ytStatus"></div>
+        <div class="results" id="ytResults"></div>
+
+        <div class="how-to">
+          <h3>사용 방법</h3>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-text">YouTube에서 영상 URL을 복사합니다 (watch, shorts, youtu.be 모두 지원)</div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-text">품질을 선택하고 [다운로드] 버튼을 클릭합니다</div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-text">720p 이상은 영상+음성 병합에 시간이 걸립니다. 잠시 기다려주세요.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
   </div>
 
+  <!-- 스크립트 로드 순서: 코어 → 플랫폼 모듈 -->
   <script src="app.js"></script>
+  <script src="app_instagram.js"></script>
+  <script src="app_youtube.js"></script>
 </body>
 </html>

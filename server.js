@@ -47,6 +47,31 @@ if (IS_WIN && fs.existsSync(LOCAL_EXE)) {
 }
 console.log(`[yt-dlp] 경로: ${YT_DLP_BIN} (platform: ${process.platform})`);
 
+// ─── ffmpeg 경로 결정 ────────────────────────────────────
+// YouTube 1080p+ 같은 분리형 포맷 merge 시 필요. Instagram에는 불필요.
+// Windows: ffmpeg.exe, Linux: ffmpeg (프로젝트 루트)
+const FFMPEG_WIN = path.join(__dirname, 'ffmpeg.exe');
+const FFMPEG_BIN = path.join(__dirname, 'ffmpeg');
+let FFMPEG_PATH = null;
+if (IS_WIN && fs.existsSync(FFMPEG_WIN)) {
+  FFMPEG_PATH = FFMPEG_WIN;
+} else if (!IS_WIN && fs.existsSync(FFMPEG_BIN)) {
+  FFMPEG_PATH = FFMPEG_BIN;
+}
+console.log(`[ffmpeg] 경로: ${FFMPEG_PATH || '(없음 — YouTube 720p+ 불가)'}`);
+
+// ─── 지원 플랫폼 ──────────────────────────────────────────
+const SUPPORTED_HOSTS = [
+  'instagram.com',
+  'youtube.com',
+  'youtu.be',
+  'm.youtube.com',
+];
+function isSupportedUrl(url) {
+  if (!url) return false;
+  return SUPPORTED_HOSTS.some(h => url.includes(h));
+}
+
 function checkYtDlp() {
   return new Promise((resolve) => {
     exec(`${YT_DLP_CMD} --version`, (err, stdout) => {
@@ -63,7 +88,9 @@ function parseUrl(reqUrl) {
 // ─── 메타데이터 추출 ──────────────────────────────────────
 function getMediaInfo(instagramUrl) {
   return new Promise((resolve, reject) => {
-    const cmd = `${YT_DLP_CMD} --dump-json --no-warnings "${instagramUrl}"`;
+    let cmd = `${YT_DLP_CMD} --dump-json --no-warnings`;
+    if (FFMPEG_PATH) cmd += ` --ffmpeg-location "${FFMPEG_PATH}"`;
+    cmd += ` "${instagramUrl}"`;
     console.log('[yt-dlp] 메타데이터 조회:', instagramUrl);
 
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
@@ -128,26 +155,36 @@ function handleStream(req, res) {
   const igurl      = qs.get('igurl');
   const idx        = parseInt(qs.get('idx') || '1', 10);
   const fmt        = qs.get('fmt') || 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
-  const isDownload = qs.get('dl') === '1';
+  const ext        = qs.get('ext') || 'mp4';   // mp4(기본) / m4a(오디오) 등
+  const fnPrefix   = qs.get('fn')  || 'download';
+  const isDownload = qs.get('dl')  === '1';
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
-  console.log(`[stream] idx=${idx} fmt=${fmt} ${igurl}`);
+  console.log(`[stream] idx=${idx} fmt=${fmt} ext=${ext} ${igurl}`);
 
-  const args = ['--playlist-items', String(idx), '--format', fmt, '-o', '-', '--no-warnings', igurl];
+  const args = ['--playlist-items', String(idx), '--format', fmt, '--no-warnings'];
+  // 비디오(merge 필요한 포맷) 대응 — mp4 출력 컨테이너로 합침
+  if (ext === 'mp4') args.push('--merge-output-format', 'mp4');
+  if (FFMPEG_PATH)   args.push('--ffmpeg-location', FFMPEG_PATH);
+  args.push('-o', '-', igurl);
+
   const child = spawn(YT_DLP_BIN, args);
   let headerSent = false;
 
   child.stdout.once('data', () => {
     if (headerSent) return;
     headerSent = true;
+    const contentType = ext === 'm4a' ? 'audio/mp4'
+                      : ext === 'mp3' ? 'audio/mpeg'
+                      : 'video/mp4';
     const headers = {
-      'Content-Type': 'video/mp4',
+      'Content-Type': contentType,
       'Access-Control-Allow-Origin': '*',
       'Transfer-Encoding': 'chunked',
       'Cache-Control': 'no-cache',
     };
-    if (isDownload) headers['Content-Disposition'] = `attachment; filename="instagram_${idx}.mp4"`;
+    if (isDownload) headers['Content-Disposition'] = `attachment; filename="${fnPrefix}_${idx}.${ext}"`;
     res.writeHead(200, headers);
   });
 
@@ -164,7 +201,8 @@ function handleQuickStream(req, res) {
   const igurl      = qs.get('igurl');
   const idx        = parseInt(qs.get('idx') || '1', 10);
   const quality    = qs.get('q') || 'low'; // low=최저화질, best=최고화질
-  const isDownload = qs.get('dl') === '1';
+  const fnPrefix   = qs.get('fn')  || 'download';
+  const isDownload = qs.get('dl')  === '1';
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
@@ -176,7 +214,10 @@ function handleQuickStream(req, res) {
 
   console.log(`[quickstream] idx=${idx} q=${quality} ${igurl}`);
 
-  const args = ['--playlist-items', String(idx), '--format', fmt, '-o', '-', '--no-warnings', igurl];
+  const args = ['--playlist-items', String(idx), '--format', fmt, '--no-warnings'];
+  if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
+  args.push('-o', '-', igurl);
+
   const child = spawn(YT_DLP_BIN, args);
   let headerSent = false;
 
@@ -189,7 +230,7 @@ function handleQuickStream(req, res) {
       'Transfer-Encoding': 'chunked',
       'Cache-Control': 'no-cache',
     };
-    if (isDownload) headers['Content-Disposition'] = `attachment; filename="instagram_${idx}.mp4"`;
+    if (isDownload) headers['Content-Disposition'] = `attachment; filename="${fnPrefix}_${idx}.mp4"`;
     res.writeHead(200, headers);
   });
 
@@ -254,9 +295,12 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const { target_url } = JSON.parse(body);
-        if (!target_url?.includes('instagram.com')) {
+        if (!isSupportedUrl(target_url)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ success: false, html: '올바른 인스타그램 URL이 아닙니다.' }));
+          return res.end(JSON.stringify({
+            success: false,
+            html: '지원하지 않는 URL입니다. (Instagram, YouTube 지원)'
+          }));
         }
         const cached = getCached(target_url);
         if (cached) {

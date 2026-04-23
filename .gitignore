@@ -1,8 +1,10 @@
 # Windows 전용 실행파일 — Render(Linux)에 올리지 않음
 yt-dlp.exe
+ffmpeg.exe
 
 # Linux 바이너리 (NAS Docker 용, 수동 다운로드)
 yt-dlp
+ffmpeg
 
 # 기타
 node_modules/

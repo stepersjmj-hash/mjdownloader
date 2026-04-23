@@ -571,4 +571,95 @@ body {
     flex: 1;
   }
   .bulk-card { padding: 20px; }
+  .tabs { flex-wrap: wrap; }
+  .yt-quality-row { flex-wrap: wrap; }
+}
+
+/* ════════════════════════════════════════════════
+   플랫폼 탭 + 섹션
+   ════════════════════════════════════════════════ */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 6px;
+}
+
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 12px 16px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tab:hover {
+  background: rgba(255,255,255,0.1);
+  color: white;
+}
+
+.tab.active {
+  background: white;
+  color: #333;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+/* 플랫폼별 활성 탭 하단 컬러 강조 */
+.tab[data-platform="instagram"].active {
+  border-bottom: 3px solid #E1306C;
+}
+
+.tab[data-platform="youtube"].active {
+  border-bottom: 3px solid #FF0000;
+}
+
+.platform-section.hidden {
+  display: none;
+}
+
+/* ════════════════════════════════════════════════
+   YouTube 전용 UI (품질 선택 row)
+   ════════════════════════════════════════════════ */
+
+.yt-quality-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.yt-quality-row label {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.yt-quality-row select {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 2px solid #e5e5e5;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: white;
+  cursor: pointer;
+}
+
+.yt-quality-row select:focus {
+  outline: none;
+  border-color: #FF0000;
+}
+
+.yt-quality-row .btn-download {
+  min-width: 120px;
 }

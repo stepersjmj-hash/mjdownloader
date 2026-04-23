@@ -1,6 +1,8 @@
 # Reelsnap
 
-인스타그램 릴스 및 게시물(이미지 포함)을 브라우저에서 바로 다운로드하는 웹 서비스. yt-dlp 기반 프록시 서버를 경유해 인스타그램 CDN의 IP 잠금 이슈를 우회합니다.
+인스타그램 릴스/게시물과 YouTube 영상을 브라우저에서 바로 다운로드하는 웹 서비스. yt-dlp 기반 프록시 서버를 경유해 인스타그램 CDN의 IP 잠금 이슈를 우회합니다.
+
+**지원 플랫폼**: Instagram (릴스, 게시물, 이미지), YouTube (영상, 쇼츠, 오디오 추출). TikTok 예정.
 
 ## 접속 URL
 
@@ -22,9 +24,11 @@
 ```
 .
 ├── server.js                 # Node.js HTTP 서버 (백엔드 API + 정적 파일 서빙)
-├── index.html                # 프론트엔드 페이지
-├── app.js                    # 프론트엔드 로직 (백엔드 분기 포함)
-├── style.css                 # 스타일
+├── index.html                # 프론트엔드 페이지 (탭 네비게이션)
+├── app.js                    # 프론트 코어 — 공통 유틸 + 탭 전환 + 백엔드 분기
+├── app_instagram.js          # Instagram 플랫폼 모듈
+├── app_youtube.js            # YouTube 플랫폼 모듈
+├── style.css                 # 스타일 (탭 + 플랫폼 컬러 포함)
 ├── package.json              # postinstall 훅으로 yt-dlp 다운로드
 ├── scripts/
 │   └── install-ytdlp.js      # yt-dlp 자동 설치 (Render 빌드용)
@@ -37,26 +41,41 @@
 └── README.md
 ```
 
+**프론트 모듈 구조**: `app.js` 가 공통 유틸/탭 전환을 담당하고, 각 플랫폼은 `app_<platform>.js` 에서 독립적으로 로직을 처리합니다. 새 플랫폼 추가 시 `app_tiktok.js` 같이 파일 하나 추가 + `index.html` 에 탭/섹션만 넣으면 됩니다.
+
 ## 사용 방법
 
+### Instagram 탭
 1. 인스타그램에서 릴스/게시물 링크 복사
-2. 접속 URL 중 하나 접속 → 입력창에 URL 붙여넣기
-3. **다운로드** 버튼 클릭 → 썸네일 + 화질 옵션 표시됨
+2. 입력창에 URL 붙여넣기 → **다운로드** 버튼 클릭
+3. 썸네일 + 화질 옵션 표시됨
 4. 항목의 **⬇ 다운로드** 버튼 클릭
 
 **일괄 다운로드**: 텍스트를 통째로 붙여넣으면 정규식으로 URL을 자동 추출해 체크박스 목록으로 보여주고, 선택한 것들을 순차 저장합니다.
+
+### YouTube 탭
+1. YouTube 영상 URL 복사 (`watch`, `shorts`, `youtu.be` 전부 지원)
+2. 입력창에 붙여넣고 **품질 선택** (360p / 720p / 1080p / Best / Audio)
+3. **다운로드** 버튼 클릭
+
+- **360p, Audio**: ffmpeg 없이 즉시 다운로드 시작 (빠름)
+- **720p 이상**: 영상+음성 분리 스트림을 ffmpeg로 병합 — 1~3분 소요 (영상 길이에 따라)
 
 ## 로컬 개발 (Windows)
 
 ```powershell
 cd C:\Users\stepe\Desktop\mj\mjdownloader
-# yt-dlp.exe 를 프로젝트 루트에 배치
-# (https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)
+# 1) yt-dlp.exe 를 프로젝트 루트에 배치
+#    https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+# 2) (선택) YouTube 720p+ 필요 시 ffmpeg.exe 도 배치
+#    https://www.gyan.dev/ffmpeg/builds/ → release essentials → 압축 해제 후 ffmpeg.exe 만 복사
 node server.js
 # → http://localhost:3000
 ```
 
 `package.json` 에 외부 의존성이 없어 `npm install` 이 필수는 아닙니다. postinstall 훅은 Windows 환경에서 스킵됩니다 (`scripts/install-ytdlp.js` 참고).
+
+서버 기동 로그에서 `[yt-dlp]` 와 `[ffmpeg]` 경로가 잘 감지됐는지 확인. ffmpeg 이 없으면 YouTube 360p / 오디오까지만 작동합니다.
 
 ## 배포 방식
 
@@ -68,6 +87,7 @@ node server.js
 - 무료 플랜: 15분 유휴 후 슬립 → 첫 요청 콜드스타트 30초+
 - CPU 0.1코어 공유, 대역폭 제한
 - **일괄 다운로드 동시 요청 시 실패 빈번** — NAS 배포의 주된 이유
+- **ffmpeg 없음** → YouTube 는 360p / 오디오까지만 가능 (720p+ 는 NAS 사용)
 
 ### 2. GitHub Pages (정적 프론트엔드)
 
