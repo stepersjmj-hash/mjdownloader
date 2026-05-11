@@ -8,8 +8,13 @@
 
   const STATUS_PREFIX = 'ig';
 
-  // Instagram URL 추출 정규식
-  const IG_URL_RE = /https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|tv|stories\/[^/]+)\/[A-Za-z0-9_-]+\/?/g;
+  // Instagram URL 추출 정규식 — reel(단수), reels(복수) 모두 지원
+  const IG_URL_RE = /https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv|stories\/[^/]+)\/[A-Za-z0-9_-]+\/?/g;
+
+  // /reels/ (복수) → /reel/ (단수) 정규화: 일부 yt-dlp 버전은 복수형을 인식하지 못함
+  function normalizeIgUrl(url) {
+    return url.replace(/(instagram\.com\/)reels\//i, '$1reel/');
+  }
 
   // ════════════════════════════════════════════════
   //  미리보기 플레이어
@@ -151,17 +156,20 @@
 
   async function startDownload() {
     const input = document.getElementById('igUrlInput');
-    const url   = input.value.trim();
+    const rawUrl = input.value.trim();
 
-    if (!url) {
+    if (!rawUrl) {
       showStatus(STATUS_PREFIX, '인스타그램 링크를 입력해주세요.', 'error');
       return;
     }
 
-    if (!url.includes('instagram.com')) {
+    if (!rawUrl.includes('instagram.com')) {
       showStatus(STATUS_PREFIX, '올바른 인스타그램 URL을 입력해주세요. (예: https://www.instagram.com/p/...)', 'error');
       return;
     }
+
+    // /reels/ → /reel/ 정규화
+    const url = normalizeIgUrl(rawUrl);
 
     const btn = document.getElementById('igDownloadBtn');
     btn.disabled = true;
@@ -274,8 +282,9 @@
     const total     = checked.length;
 
     for (const cb of checked) {
-      const igurl    = cb.value;
-      const statusEl = statusMap[igurl];
+      const rawIgUrl = cb.value;
+      const igurl    = normalizeIgUrl(rawIgUrl);   // /reels/ → /reel/ 정규화
+      const statusEl = statusMap[rawIgUrl];
       progress.textContent = `처리 중 ${done + 1} / ${total}`;
       if (statusEl) { statusEl.textContent = '⏳'; statusEl.className = 'url-status loading'; }
 

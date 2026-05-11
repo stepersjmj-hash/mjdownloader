@@ -74,6 +74,13 @@ function isSupportedUrl(url) {
   return SUPPORTED_HOSTS.some(h => url.includes(h));
 }
 
+// Instagram /reels/ (복수) → /reel/ (단수) 정규화
+// 일부 yt-dlp 버전은 복수형 경로를 인식하지 못하므로 사전 치환
+function normalizeIgUrl(url) {
+  if (!url) return url;
+  return url.replace(/(instagram\.com\/)reels\//i, '$1reel/');
+}
+
 function checkYtDlp() {
   return new Promise((resolve) => {
     exec(`${YT_DLP_CMD} --version`, (err, stdout) => {
@@ -89,6 +96,7 @@ function parseUrl(reqUrl) {
 
 // ─── 메타데이터 추출 ──────────────────────────────────────
 function getMediaInfo(instagramUrl) {
+  instagramUrl = normalizeIgUrl(instagramUrl);
   return new Promise((resolve, reject) => {
     let cmd = `${YT_DLP_CMD} --dump-json --no-warnings`;
     if (FFMPEG_PATH) cmd += ` --ffmpeg-location "${FFMPEG_PATH}"`;
@@ -164,7 +172,7 @@ function isMergeFormat(fmt) {
 
 function handleStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
-  const igurl      = qs.get('igurl');
+  const igurl      = normalizeIgUrl(qs.get('igurl'));
   const idx        = parseInt(qs.get('idx') || '1', 10);
   const fmt        = qs.get('fmt') || 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
   const ext        = qs.get('ext') || 'mp4';   // mp4(기본) / m4a(오디오) 등
@@ -290,7 +298,7 @@ function handleStreamTempFile(req, res, opts) {
 // ─── quickstream: 메타데이터 없이 바로 스트리밍 (일괄 다운로드용) ──
 function handleQuickStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
-  const igurl      = qs.get('igurl');
+  const igurl      = normalizeIgUrl(qs.get('igurl'));
   const idx        = parseInt(qs.get('idx') || '1', 10);
   const quality    = qs.get('q') || 'low'; // low=최저화질, best=최고화질
   const fnPrefix   = qs.get('fn')  || 'download';
