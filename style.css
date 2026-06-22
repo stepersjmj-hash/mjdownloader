@@ -622,6 +622,10 @@ body {
   border-bottom: 3px solid #FF0000;
 }
 
+.tab[data-platform="tiktok"].active {
+  border-bottom: 3px solid #25F4EE;
+}
+
 .platform-section.hidden {
   display: none;
 }

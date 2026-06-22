@@ -10,7 +10,7 @@ const https  = require('https');
 const fs     = require('fs');
 const os     = require('os');
 const path   = require('path');
-const { exec, spawn } = require('child_process');
+const { spawn } = require('child_process');
 
 // Render는 PORT 환경변수를 주입함
 const PORT = process.env.PORT || 3000;
@@ -33,19 +33,16 @@ const IS_WIN    = process.platform === 'win32';
 const LOCAL_EXE = path.join(__dirname, 'yt-dlp.exe');
 const LOCAL_BIN = path.join(__dirname, 'yt-dlp');
 
-let YT_DLP_BIN, YT_DLP_CMD;
+let YT_DLP_BIN;
 if (IS_WIN && fs.existsSync(LOCAL_EXE)) {
   // Windows: 폴더 내 .exe
   YT_DLP_BIN = LOCAL_EXE;
-  YT_DLP_CMD = `"${LOCAL_EXE}"`;
 } else if (!IS_WIN && fs.existsSync(LOCAL_BIN)) {
   // Linux: curl로 받은 폴더 내 바이너리 (Render 빌드)
   YT_DLP_BIN = LOCAL_BIN;
-  YT_DLP_CMD = `"${LOCAL_BIN}"`;
 } else {
   // 시스템 PATH 폴백
   YT_DLP_BIN = 'yt-dlp';
-  YT_DLP_CMD = 'yt-dlp';
 }
 console.log(`[yt-dlp] 경로: ${YT_DLP_BIN} (platform: ${process.platform})`);
 
@@ -68,6 +65,9 @@ const SUPPORTED_HOSTS = [
   'youtube.com',
   'youtu.be',
   'm.youtube.com',
+  'tiktok.com',
+  'vm.tiktok.com',
+  'vt.tiktok.com',
 ];
 function isSupportedUrl(url) {
   if (!url) return false;
@@ -83,9 +83,11 @@ function normalizeIgUrl(url) {
 
 function checkYtDlp() {
   return new Promise((resolve) => {
-    exec(`${YT_DLP_CMD} --version`, (err, stdout) => {
-      resolve(err ? null : stdout.trim());
-    });
+    const child = spawn(YT_DLP_BIN, ['--version']);
+    let out = '';
+    child.stdout.on('data', d => { out += d; });
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => resolve(code === 0 ? out.trim() : null));
   });
 }
 
@@ -98,13 +100,39 @@ function parseUrl(reqUrl) {
 function getMediaInfo(instagramUrl) {
   instagramUrl = normalizeIgUrl(instagramUrl);
   return new Promise((resolve, reject) => {
-    let cmd = `${YT_DLP_CMD} --dump-json --no-warnings`;
-    if (FFMPEG_PATH) cmd += ` --ffmpeg-location "${FFMPEG_PATH}"`;
-    cmd += ` "${instagramUrl}"`;
+    // 셸을 거치지 않도록 spawn + 인자 배열 사용 (명령어 인젝션 차단)
+    const args = ['--dump-json', '--no-warnings'];
+    if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
+    args.push(instagramUrl);
     console.log('[yt-dlp] 메타데이터 조회:', instagramUrl);
 
-    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
+    const child = spawn(YT_DLP_BIN, args);
+    let stdout = '', stderr = '';
+    let settled = false;
+
+    // exec 의 timeout:30000 동작 보존
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch {}
+      reject(new Error('yt-dlp 응답 시간 초과 (30초)'));
+    }, 30000);
+
+    child.stdout.on('data', d => { stdout += d; });
+    child.stderr.on('data', d => { stderr += d; });
+
+    child.on('error', (e) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(e.message));
+    });
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp 종료코드 ${code}`));
 
       try {
         const lines = stdout.trim().split('\n').filter(Boolean);

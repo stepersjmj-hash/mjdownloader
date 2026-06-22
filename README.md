@@ -1,8 +1,8 @@
 # Reelsnap
 
-인스타그램 릴스/게시물과 YouTube 영상을 브라우저에서 바로 다운로드하는 웹 서비스. yt-dlp 기반 프록시 서버를 경유해 인스타그램 CDN의 IP 잠금 이슈를 우회합니다.
+인스타그램 릴스/게시물, YouTube 영상, TikTok 영상을 브라우저에서 바로 다운로드하는 웹 서비스. yt-dlp 기반 프록시 서버를 경유해 인스타그램 CDN의 IP 잠금 이슈를 우회합니다.
 
-**지원 플랫폼**: Instagram (릴스, 게시물, 이미지), YouTube (영상, 쇼츠, 오디오 추출). TikTok 예정.
+**지원 플랫폼**: Instagram (릴스, 게시물, 이미지), YouTube (영상, 쇼츠, 오디오 추출), TikTok (영상, 워터마크 없음, 일괄 다운로드).
 
 ## 접속 URL
 
@@ -28,6 +28,7 @@
 ├── app.js                    # 프론트 코어 — 공통 유틸 + 탭 전환 + 백엔드 분기
 ├── app_instagram.js          # Instagram 플랫폼 모듈
 ├── app_youtube.js            # YouTube 플랫폼 모듈
+├── app_tiktok.js             # TikTok 플랫폼 모듈 (단일 + 일괄)
 ├── style.css                 # 스타일 (탭 + 플랫폼 컬러 포함)
 ├── package.json              # postinstall 훅으로 yt-dlp 다운로드
 ├── scripts/
@@ -61,6 +62,14 @@
 - **360p, Audio**: ffmpeg 없이 즉시 다운로드 시작 (빠름)
 - **720p 이상**: 영상+음성 분리 스트림을 ffmpeg로 병합 — 1~3분 소요 (영상 길이에 따라)
 
+### TikTok 탭
+1. TikTok 앱/웹에서 영상 링크 복사 (`www.tiktok.com/@user/video/...`)
+2. 입력창에 붙여넣고 **다운로드** 버튼 클릭 → 워터마크 없는 최고화질 mp4 저장
+
+**일괄 다운로드**: 텍스트를 통째로 붙여넣으면 TikTok URL을 자동 추출(쿼리스트링·중복 제거)해 체크박스 목록으로 보여주고, 선택한 것들을 순차 저장합니다.
+
+- TikTok 은 영상+음성이 합쳐진(muxed) 포맷만 제공하므로 **ffmpeg 없이 즉시 다운로드**됩니다. 오디오 전용 추출은 지원하지 않습니다(별도 오디오 스트림 없음).
+
 ## 로컬 개발 (Windows)
 
 ```powershell
@@ -72,6 +81,8 @@ cd C:\Users\stepe\Desktop\mj\mjdownloader
 node server.js
 # → http://localhost:3000
 ```
+
+**간편 실행**: `start-server.bat` 을 더블클릭하면 됩니다. Node.js / yt-dlp 존재 여부를 점검한 뒤 서버를 띄우고, **잠시 후 기본 브라우저로 `http://localhost:PORT` 를 자동으로 엽니다**. `PORT` 환경변수를 설정하면 해당 포트로 뜹니다(기본 3000). 종료는 창에서 Ctrl+C.
 
 `package.json` 에 외부 의존성이 없어 `npm install` 이 필수는 아닙니다. postinstall 훅은 Windows 환경에서 스킵됩니다 (`scripts/install-ytdlp.js` 참고).
 

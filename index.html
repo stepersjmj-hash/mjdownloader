@@ -10,13 +10,14 @@
   <div class="container">
     <div class="logo">
       <h1>🎬 Reelsnap</h1>
-      <p>인스타그램 &amp; YouTube 영상/이미지 무료 다운로드 &nbsp;·&nbsp; by MJ</p>
+      <p>인스타그램 &amp; YouTube &amp; TikTok 영상/이미지 무료 다운로드 &nbsp;·&nbsp; by MJ</p>
     </div>
 
     <!-- ── 플랫폼 탭 ── -->
     <div class="tabs" role="tablist">
       <button class="tab active" data-platform="instagram" role="tab">📷 Instagram</button>
       <button class="tab" data-platform="youtube" role="tab">▶ YouTube</button>
+      <button class="tab" data-platform="tiktok" role="tab">🎵 TikTok</button>
     </div>
 
     <!-- ══════════════════════════════════════════════════════ -->
@@ -129,11 +130,75 @@
 
     </section>
 
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- TikTok 섹션                                            -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <section class="platform-section hidden" id="section-tiktok" data-platform="tiktok">
+
+      <!-- ── 일괄 URL 다운로드 카드 ── -->
+      <div class="bulk-card">
+        <h2>일괄 다운로드</h2>
+        <textarea
+          class="bulk-textarea"
+          id="ttBulkText"
+          placeholder="텍스트를 붙여넣으세요. TikTok URL을 자동으로 찾아냅니다.&#10;예) 이 영상 좋다 https://www.tiktok.com/@user/video/1234567890 저것도 https://www.tiktok.com/@abc/video/9876543210"
+        ></textarea>
+        <div class="bulk-actions">
+          <button class="btn-extract" id="ttExtractBtn">🔍 URL 추출</button>
+          <button class="btn-clear-text" id="ttClearBtn">초기화</button>
+        </div>
+
+        <div class="url-list" id="ttUrlList">
+          <div class="url-list-header">
+            <span id="ttUrlListTitle">0개 URL 발견</span>
+            <button class="btn-toggle-all" id="ttToggleAllBtn">전체 선택/해제</button>
+          </div>
+          <div id="ttUrlListItems"></div>
+          <div class="bulk-download-bar">
+            <button class="btn-bulk-dl" id="ttBulkDlBtn" disabled>⬇ 선택한 URL 다운로드</button>
+            <span class="bulk-progress" id="ttBulkProgress"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 단일 URL 다운로드 카드 ── -->
+      <div class="card">
+        <div class="search-box">
+          <input type="text" id="ttUrlInput" placeholder="TikTok 링크를 붙여넣으세요 (예: https://www.tiktok.com/@user/video/...)" />
+          <button class="btn-paste" id="ttPasteBtn" title="클립보드에서 붙여넣기">📋 붙여넣기</button>
+          <button class="btn-download" id="ttDownloadBtn">다운로드</button>
+        </div>
+
+        <div class="status" id="ttStatus"></div>
+        <div class="results" id="ttResults"></div>
+
+        <div class="how-to">
+          <h3>사용 방법</h3>
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-text">TikTok 앱/웹에서 영상의 링크를 복사합니다</div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-text">위 입력창에 붙여넣고 품질을 선택한 뒤 [다운로드] 버튼을 클릭합니다</div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-text">여러 개를 받으려면 [일괄 다운로드]에 텍스트를 붙여넣어 URL을 추출하세요</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
   </div>
 
   <!-- 스크립트 로드 순서: 코어 → 플랫폼 모듈 -->
   <script src="app.js"></script>
   <script src="app_instagram.js"></script>
   <script src="app_youtube.js"></script>
+  <script src="app_tiktok.js"></script>
 </body>
 </html>
