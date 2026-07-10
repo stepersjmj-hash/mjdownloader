@@ -7,7 +7,7 @@
 #   2) ffmpeg (Linux static 바이너리) 를 프로젝트 루트에 배치
 #      https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
 #      → 압축 해제 후 'ffmpeg' 실행파일만 프로젝트 루트로 복사
-#      (YouTube 720p+ 머지에 필요. Instagram 전용이면 생략 가능)
+#      (YouTube 720p+ 머지 및 HEVC → AVC 자동 변환에 필요 — 배치 권장)
 #
 # 빌드 / 실행:
 #   docker compose up -d --build
@@ -20,7 +20,7 @@ WORKDIR /app
 COPY . /app
 
 # yt-dlp + ffmpeg 실행 권한 + 비루트 사용자
-# (ffmpeg 이 없으면 chmod 가 오류를 내지만 빌드는 계속 — YouTube 720p+ 만 불가)
+# (ffmpeg 이 없으면 chmod 가 오류를 내지만 빌드는 계속 — YouTube 720p+ / HEVC 변환 불가)
 RUN chmod +x /app/yt-dlp && \
     ([ -f /app/ffmpeg ] && chmod +x /app/ffmpeg || echo "[build] ffmpeg 없음 — YouTube 720p+ 불가") && \
     groupadd -r reelsnap && useradd -r -g reelsnap reelsnap && \

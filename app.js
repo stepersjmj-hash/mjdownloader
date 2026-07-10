@@ -76,6 +76,7 @@ function streamUrl(link, opts = {}) {
     `fmt=${fmt}`,
     `ext=${encodeURIComponent(ext)}`,
     `fn=${encodeURIComponent(fnPrefix)}`,
+    link.vcodec ? `vc=${encodeURIComponent(link.vcodec)}` : '',   // AVC 확정 시 서버가 즉시 스트리밍
     forDownload ? 'dl=1' : '',
   ].filter(Boolean).join('&');
   return `${BACKEND}/stream?${qs}`;

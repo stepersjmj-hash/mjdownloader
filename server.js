@@ -81,6 +81,19 @@ function normalizeIgUrl(url) {
   return url.replace(/(instagram\.com\/)reels\//i, '$1reel/');
 }
 
+// ─── AVC(H.264) 우선 포맷 선택 ───────────────────────────
+// HEVC(H.265)는 Windows 브라우저 대부분에서 재생 불가.
+// 같은 게시물에 AVC 포맷이 있으면 변환 없이 그것을 우선 선택한다.
+const FMT_BEST_AVC  = 'best[ext=mp4][vcodec^=avc][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
+const FMT_WORST_AVC = 'worst[ext=mp4][vcodec^=avc][acodec!=none]/worst[ext=mp4][vcodec!=none][acodec!=none]/worst[ext=mp4]/worst';
+
+function isAvc(vcodec) {
+  const v = (vcodec || '').toLowerCase();
+  return v.startsWith('avc') || v.startsWith('h264');
+}
+
+const HEVC_NAMES = new Set(['hevc', 'h265', 'hvc1', 'hev1', 'x265']);
+
 function checkYtDlp() {
   return new Promise((resolve) => {
     const child = spawn(YT_DLP_BIN, ['--version']);
@@ -164,17 +177,24 @@ function getMediaInfo(instagramUrl) {
               f.vcodec && f.vcodec !== 'none' &&
               f.acodec && f.acodec !== 'none'
             );
-            vf.sort((a, b) => (b.height || 0) - (a.height || 0));
+            // 같은 해상도에 AVC/HEVC가 모두 있으면 AVC(H.264) 우선 — 변환 없이 호환 확보
+            const byHeight = new Map();
             vf.forEach(f => {
-              const q = f.height ? `${f.height}p` : (f.format_note || 'HD');
-              links.push({ quality: q, type: 'video', index: idx, igurl: instagramUrl, fmtId: f.format_id, thumbnail: itemThumb });
+              const key = f.height || 0;
+              const cur = byHeight.get(key);
+              if (!cur || (isAvc(f.vcodec) && !isAvc(cur.vcodec))) byHeight.set(key, f);
             });
-            if (!vf.length) {
-              // muxed 포맷이 없으면 yt-dlp가 자체 선택하도록 best 포맷 문자열 사용
-              links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best', thumbnail: itemThumb });
+            const chosen = [...byHeight.values()].sort((a, b) => (b.height || 0) - (a.height || 0));
+            chosen.forEach(f => {
+              const q = f.height ? `${f.height}p` : (f.format_note || 'HD');
+              links.push({ quality: q, type: 'video', index: idx, igurl: instagramUrl, fmtId: f.format_id, vcodec: f.vcodec || null, thumbnail: itemThumb });
+            });
+            if (!chosen.length) {
+              // muxed 포맷이 없으면 yt-dlp가 자체 선택하도록 AVC 우선 포맷 문자열 사용
+              links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: FMT_BEST_AVC, thumbnail: itemThumb });
             }
           } else {
-            links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: 'best', thumbnail: itemThumb });
+            links.push({ quality: 'HD', type: 'video', index: idx, igurl: instagramUrl, fmtId: FMT_BEST_AVC, thumbnail: itemThumb });
           }
         });
 
@@ -188,9 +208,10 @@ function getMediaInfo(instagramUrl) {
 }
 
 // ─── yt-dlp 스트리밍 ──────────────────────────────────────
-// merge 가 필요한 포맷(YouTube 720p+ 의 bv+ba)은 stdout 파이핑 시 MP4 moov atom 이
-// 파일 끝에 쓰여 브라우저 재생 불가. → temp 파일로 다운로드 후 서빙.
-// 나머지 케이스(Instagram, 360p muxed, audio 단일포맷)는 기존 stdout 파이핑 유지.
+// temp 파일 경유 대상:
+//   1) merge 필요 포맷(YouTube 720p+ 의 bv+ba) — stdout 파이핑 시 moov atom 문제
+//   2) AVC 여부가 불확실한 mp4 — 코덱 검사 후 HEVC 면 AVC 자동 변환
+// vc 파라미터로 AVC 가 확정된 mp4 와 오디오(m4a 등)는 stdout 파이핑 유지.
 
 function isMergeFormat(fmt) {
   // yt-dlp 포맷 문자열의 '+' 가 분리 스트림 merge 를 의미
@@ -202,15 +223,16 @@ function handleStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
   const igurl      = normalizeIgUrl(qs.get('igurl'));
   const idx        = parseInt(qs.get('idx') || '1', 10);
-  const fmt        = qs.get('fmt') || 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
+  const fmt        = qs.get('fmt') || FMT_BEST_AVC;
   const ext        = qs.get('ext') || 'mp4';   // mp4(기본) / m4a(오디오) 등
+  const vc         = qs.get('vc')  || '';      // 메타데이터에서 확인된 vcodec (AVC 확정이면 직접 스트리밍)
   const fnPrefix   = qs.get('fn')  || 'download';
   const isDownload = qs.get('dl')  === '1';
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
-  // merge 필요 + mp4 출력 → temp 파일 방식
-  if (ext === 'mp4' && isMergeFormat(fmt)) {
+  // merge 필요, 또는 AVC 확신이 없는 mp4 → temp 파일 방식 (HEVC면 ffmpeg 변환)
+  if (ext === 'mp4' && (isMergeFormat(fmt) || !isAvc(vc))) {
     return handleStreamTempFile(req, res, { igurl, idx, fmt, ext, fnPrefix, isDownload });
   }
 
@@ -247,14 +269,55 @@ function handleStream(req, res) {
   req.on('close', () => child.kill());
 }
 
+// ─── HEVC → AVC 자동 변환 헬퍼 ───────────────────────────
+// ffprobe 가 없는 환경 대응: ffmpeg -i 의 stderr 에서 비디오 코덱명 추출
+function probeVideoCodec(filePath) {
+  return new Promise((resolve) => {
+    if (!FFMPEG_PATH) return resolve(null);
+    const child = spawn(FFMPEG_PATH, ['-hide_banner', '-i', filePath]);
+    let err = '';
+    child.stderr.on('data', d => { err += d; });
+    child.on('error', () => resolve(null));
+    child.on('close', () => {
+      const m = err.match(/Video:\s*([A-Za-z0-9_]+)/);
+      resolve(m ? m[1].toLowerCase() : null);
+    });
+  });
+}
+
+// HEVC → H.264 재인코딩 (오디오는 복사). CPU 부하 큼 — HEVC 감지 시에만 호출.
+function transcodeToAvc(inPath, outPath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-y', '-hide_banner', '-loglevel', 'error',
+      '-i', inPath,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-pix_fmt', 'yuv420p',   // 10bit/HDR HEVC 소스도 브라우저 호환 8bit 로 강제
+      '-c:a', 'copy',
+      '-movflags', '+faststart',
+      outPath,
+    ];
+    const child = spawn(FFMPEG_PATH, args);
+    let err = '';
+    child.stderr.on('data', d => { err += d; });
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(err.trim() || `ffmpeg 종료코드 ${code}`));
+    });
+  });
+}
+
 // ─── yt-dlp 스트리밍 (temp 파일 방식) ─────────────────────
-// merge 가 필요한 포맷을 임시 파일에 먼저 저장한 뒤 브라우저로 전송.
+// merge 가 필요한 포맷, 또는 AVC 여부가 불확실한 mp4 를 임시 파일에 먼저 저장.
 // moov atom 이 파일 앞쪽에 정상 배치되어 재생 가능.
+// mp4 는 코덱 검사 후 HEVC 면 ffmpeg 로 AVC(H.264) 변환 후 전송.
 function handleStreamTempFile(req, res, opts) {
   const { igurl, idx, fmt, ext, fnPrefix, isDownload } = opts;
 
   const uniq    = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   const tmpPath = path.join(os.tmpdir(), `reelsnap_${uniq}.${ext}`);
+  const avcPath = path.join(os.tmpdir(), `reelsnap_${uniq}_avc.mp4`);
 
   console.log(`[stream-temp] idx=${idx} fmt=${fmt} ext=${ext} → ${tmpPath}`);
 
@@ -274,9 +337,11 @@ function handleStreamTempFile(req, res, opts) {
   function cleanup() {
     if (cleanupDone) return;
     cleanupDone = true;
-    fs.unlink(tmpPath, (err) => {
-      if (!err) console.log('[stream-temp] 삭제:', tmpPath);
-    });
+    for (const p of [tmpPath, avcPath]) {
+      fs.unlink(p, (err) => {
+        if (!err) console.log('[stream-temp] 삭제:', p);
+      });
+    }
   }
 
   child.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[yt-dlp]', m); });
@@ -287,17 +352,37 @@ function handleStreamTempFile(req, res, opts) {
     cleanup();
   });
 
-  child.on('close', (code) => {
-    if (res.headersSent) return; // 이미 클라이언트 끊김 처리됨
+  child.on('close', async (code) => {
+    if (res.headersSent || cleanupDone) return; // 이미 클라이언트 끊김 처리됨
     if (code !== 0 || !fs.existsSync(tmpPath)) {
       res.writeHead(500); res.end('yt-dlp 다운로드 실패');
       cleanup();
       return;
     }
 
+    // mp4 코덱 검사 → HEVC 면 AVC(H.264) 로 변환
+    let servePath = tmpPath;
+    if (ext === 'mp4' && FFMPEG_PATH) {
+      const codec = await probeVideoCodec(tmpPath);
+      if (codec) console.log(`[stream-temp] 비디오 코덱: ${codec}`);
+      if (codec && HEVC_NAMES.has(codec)) {
+        console.log('[stream-temp] HEVC 감지 → AVC 변환 시작 (시간이 걸릴 수 있음)');
+        try {
+          await transcodeToAvc(tmpPath, avcPath);
+          servePath = avcPath;
+          console.log('[stream-temp] AVC 변환 완료');
+        } catch (e) {
+          // 변환 실패 시 원본이라도 전송 (다운로드 자체는 성공시킴)
+          console.error('[stream-temp] AVC 변환 실패 — 원본 전송:', e.message);
+        }
+      }
+      // 변환 대기 중 클라이언트가 끊었으면 중단
+      if (cleanupDone || res.destroyed) { cleanup(); return; }
+    }
+
     // 파일 완성 → 브라우저로 전송
     let stat;
-    try { stat = fs.statSync(tmpPath); }
+    try { stat = fs.statSync(servePath); }
     catch (e) { res.writeHead(500); res.end('temp 파일 접근 실패'); cleanup(); return; }
 
     const contentType = ext === 'm4a' ? 'audio/mp4' : 'video/mp4';
@@ -310,7 +395,7 @@ function handleStreamTempFile(req, res, opts) {
     if (isDownload) headers['Content-Disposition'] = `attachment; filename="${fnPrefix}_${idx}.${ext}"`;
     res.writeHead(200, headers);
 
-    const readStream = fs.createReadStream(tmpPath);
+    const readStream = fs.createReadStream(servePath);
     readStream.pipe(res);
     readStream.on('close', cleanup);
     readStream.on('error', cleanup);
@@ -323,7 +408,8 @@ function handleStreamTempFile(req, res, opts) {
   });
 }
 
-// ─── quickstream: 메타데이터 없이 바로 스트리밍 (일괄 다운로드용) ──
+// ─── quickstream: 메타데이터 없이 바로 다운로드 (일괄 다운로드용) ──
+// temp 파일 경유 — 코덱 검사 후 HEVC 면 AVC(H.264) 자동 변환
 function handleQuickStream(req, res) {
   const qs         = parseUrl(req.url).searchParams;
   const igurl      = normalizeIgUrl(qs.get('igurl'));
@@ -334,39 +420,11 @@ function handleQuickStream(req, res) {
 
   if (!igurl) { res.writeHead(400); res.end('igurl 파라미터 필요'); return; }
 
-  // ffmpeg 없이도 재생 가능한 muxed 스트림만 선택 (+ 연산자 사용 금지)
-  // worst[height]/best[height] → 영상+음성이 이미 합쳐진 포맷만 대상
-  const fmt = quality === 'best'
-    ? 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best'
-    : 'worst[ext=mp4][vcodec!=none][acodec!=none]/worst[ext=mp4]/worst';
+  // AVC 우선 muxed 스트림 (+ 연산자 사용 금지 → merge 불필요)
+  const fmt = quality === 'best' ? FMT_BEST_AVC : FMT_WORST_AVC;
 
   console.log(`[quickstream] idx=${idx} q=${quality} ${igurl}`);
-
-  const args = ['--playlist-items', String(idx), '--format', fmt, '--no-warnings'];
-  if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
-  args.push('-o', '-', igurl);
-
-  const child = spawn(YT_DLP_BIN, args);
-  let headerSent = false;
-
-  child.stdout.once('data', () => {
-    if (headerSent) return;
-    headerSent = true;
-    const headers = {
-      'Content-Type': 'video/mp4',
-      'Access-Control-Allow-Origin': '*',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
-    };
-    if (isDownload) headers['Content-Disposition'] = `attachment; filename="${fnPrefix}_${idx}.mp4"`;
-    res.writeHead(200, headers);
-  });
-
-  child.stdout.pipe(res);
-  child.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[quickstream]', m); });
-  child.on('error', (e) => { if (!headerSent && !res.headersSent) { res.writeHead(500); res.end(e.message); } });
-  child.on('close', (code) => { if (code !== 0 && !headerSent) { res.writeHead(500); res.end('yt-dlp 실패'); } });
-  req.on('close', () => child.kill());
+  handleStreamTempFile(req, res, { igurl, idx, fmt, ext: 'mp4', fnPrefix, isDownload });
 }
 
 // ─── 썸네일 프록시 ────────────────────────────────────────

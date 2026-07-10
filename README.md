@@ -4,6 +4,8 @@
 
 **지원 플랫폼**: Instagram (릴스, 게시물, 이미지), YouTube (영상, 쇼츠, 오디오 추출), TikTok (영상, 워터마크 없음, 일괄 다운로드).
 
+**코덱 호환성**: 다운로드되는 mp4 는 항상 AVC(H.264) 로 보장됩니다. AVC 포맷이 있으면 변환 없이 우선 선택하고, HEVC(H.265) 만 제공되는 영상은 서버에서 ffmpeg 로 자동 변환 후 전송합니다. (하단 [HEVC → AVC 자동 변환](#hevc--avc-자동-변환) 참고)
+
 ## 접속 URL
 
 | 환경 | URL | 용도 |
@@ -69,6 +71,21 @@
 **일괄 다운로드**: 텍스트를 통째로 붙여넣으면 TikTok URL을 자동 추출(쿼리스트링·중복 제거)해 체크박스 목록으로 보여주고, 선택한 것들을 순차 저장합니다.
 
 - TikTok 은 영상+음성이 합쳐진(muxed) 포맷만 제공하므로 **ffmpeg 없이 즉시 다운로드**됩니다. 오디오 전용 추출은 지원하지 않습니다(별도 오디오 스트림 없음).
+
+## HEVC → AVC 자동 변환
+
+일부 게시물(특히 TikTok, 인스타그램 고화질 릴스)은 HEVC(H.265) 코덱으로 제공되어 Windows 브라우저/플레이어에서 재생이 안 될 수 있습니다. 서버가 두 단계로 AVC(H.264)를 보장합니다:
+
+1. **AVC 우선 선택** — yt-dlp 포맷 문자열에 `[vcodec^=avc]` 우선순위를 두어, 같은 게시물에 AVC 포맷이 있으면 **변환 없이** 그것을 선택 (속도·화질 손실 없음)
+2. **ffmpeg 자동 변환** — AVC 포맷이 없는 경우: temp 파일로 받은 뒤 코덱을 검사(`ffmpeg -i` stderr 파싱)하고, HEVC 면 `libx264 -preset veryfast -crf 23 -pix_fmt yuv420p` 로 변환 후 전송 (오디오는 복사)
+
+동작 세부사항:
+
+- 메타데이터(`/api/convert`)가 코덱을 아는 경우 `vc` 파라미터로 서버에 전달 → AVC 확정이면 temp 파일 없이 즉시 스트리밍
+- 코덱 미상 mp4 와 `/quickstream`(일괄 다운로드)은 항상 temp 파일 경유로 코덱 검사
+- 변환 실패 시 원본(HEVC)이라도 전송해서 다운로드 자체는 성공시킴
+- **ffmpeg 이 없는 환경**(Render 무료 플랜 등)에서는 변환이 생략되고 원본 코덱 그대로 전송됨
+- 변환은 CPU 부하가 큼 — 1분 영상 기준 PC 수십 초, NAS(DS920+) 수 분 소요 가능. 다운로드 시작이 그만큼 늦어짐
 
 ## 로컬 개발 (Windows)
 
@@ -136,6 +153,12 @@ const BACKEND = isGitHubPages ? REMOTE_BACKEND : '';
 
 ### 로컬 Windows에서 yt-dlp 실행 실패
 → 프로젝트 루트에 `yt-dlp.exe` 있는지 확인. 없으면 [릴리즈 페이지](https://github.com/yt-dlp/yt-dlp/releases/latest)에서 `yt-dlp.exe` 다운로드.
+
+### 다운로드한 mp4 가 재생 안 됨 (검은 화면 / 소리만 나옴)
+→ HEVC 코덱 영상일 가능성. 서버에 ffmpeg 가 있으면 자동으로 AVC 변환됨 — 서버 기동 로그에서 `[ffmpeg] 경로` 감지 여부 확인. Render 무료 플랜은 ffmpeg 가 없어 변환이 생략되므로 NAS/로컬 사용 권장.
+
+### 인스타그램 다운로드가 "알 수 없는 서버 오류" 로 실패
+→ yt-dlp 구버전의 인스타그램 추출기 문제일 가능성 높음 (`Instagram sent an empty media response`). 서버 환경의 yt-dlp 를 최신으로 업데이트: 로컬은 `yt-dlp -U`, NAS 는 최신 바이너리 교체 후 재빌드, Render 는 재배포.
 
 ### NAS 배포 관련 이슈
 → **[NAS_DEPLOYMENT.md](./NAS_DEPLOYMENT.md)** 의 트러블슈팅 섹션 참고 (Docker 빌드/실행 DNS 이슈, 방화벽, 리버스 프록시 등).
