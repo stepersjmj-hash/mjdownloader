@@ -84,8 +84,9 @@ function normalizeIgUrl(url) {
 // ─── AVC(H.264) 우선 포맷 선택 ───────────────────────────
 // HEVC(H.265)는 Windows 브라우저 대부분에서 재생 불가.
 // 같은 게시물에 AVC 포맷이 있으면 변환 없이 그것을 우선 선택한다.
-const FMT_BEST_AVC  = 'best[ext=mp4][vcodec^=avc][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
-const FMT_WORST_AVC = 'worst[ext=mp4][vcodec^=avc][acodec!=none]/worst[ext=mp4][vcodec!=none][acodec!=none]/worst[ext=mp4]/worst';
+// (vcodec 표기가 사이트마다 다름: Instagram 'avc1...', TikTok 'h264' — 두 표기 모두 필터)
+const FMT_BEST_AVC  = 'best[ext=mp4][vcodec^=avc][acodec!=none]/best[ext=mp4][vcodec^=h264][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
+const FMT_WORST_AVC = 'worst[ext=mp4][vcodec^=avc][acodec!=none]/worst[ext=mp4][vcodec^=h264][acodec!=none]/worst[ext=mp4][vcodec!=none][acodec!=none]/worst[ext=mp4]/worst';
 
 function isAvc(vcodec) {
   const v = (vcodec || '').toLowerCase();
@@ -285,6 +286,24 @@ function probeVideoCodec(filePath) {
   });
 }
 
+// 동시 변환 제한 — 일괄 다운로드 시 변환 폭주로 NAS CPU 가 마비되는 것 방지.
+// 슬롯이 다 차면 대기 후 순차 실행 (각 변환이 CPU 를 충분히 써서 빨리 끝나도록).
+const MAX_CONCURRENT_TRANSCODES = 2;
+let activeTranscodes = 0;
+const transcodeWaiters = [];
+function acquireTranscodeSlot() {
+  if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
+    activeTranscodes++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => transcodeWaiters.push(resolve));
+}
+function releaseTranscodeSlot() {
+  const next = transcodeWaiters.shift();
+  if (next) next();          // 대기자에게 슬롯 승계 (activeTranscodes 유지)
+  else activeTranscodes--;
+}
+
 // HEVC → H.264 재인코딩 (오디오는 복사). CPU 부하 큼 — HEVC 감지 시에만 호출.
 function transcodeToAvc(inPath, outPath) {
   return new Promise((resolve, reject) => {
@@ -366,14 +385,20 @@ function handleStreamTempFile(req, res, opts) {
       const codec = await probeVideoCodec(tmpPath);
       if (codec) console.log(`[stream-temp] 비디오 코덱: ${codec}`);
       if (codec && HEVC_NAMES.has(codec)) {
-        console.log('[stream-temp] HEVC 감지 → AVC 변환 시작 (시간이 걸릴 수 있음)');
+        console.log(`[stream-temp] HEVC 감지 → AVC 변환 대기 (진행 중 ${activeTranscodes}/${MAX_CONCURRENT_TRANSCODES})`);
+        await acquireTranscodeSlot();
+        // 슬롯 대기 중 클라이언트가 끊었으면 변환 자체를 생략
+        if (cleanupDone || res.destroyed) { releaseTranscodeSlot(); cleanup(); return; }
         try {
+          console.log('[stream-temp] AVC 변환 시작 (시간이 걸릴 수 있음)');
           await transcodeToAvc(tmpPath, avcPath);
           servePath = avcPath;
           console.log('[stream-temp] AVC 변환 완료');
         } catch (e) {
           // 변환 실패 시 원본이라도 전송 (다운로드 자체는 성공시킴)
           console.error('[stream-temp] AVC 변환 실패 — 원본 전송:', e.message);
+        } finally {
+          releaseTranscodeSlot();
         }
       }
       // 변환 대기 중 클라이언트가 끊었으면 중단

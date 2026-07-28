@@ -16,9 +16,12 @@
   const TT_URL_RE = /https?:\/\/(?:www\.|m\.)?tiktok\.com\/@[\w.-]+\/video\/\d+|https?:\/\/(?:vm|vt)\.tiktok\.com\/[A-Za-z0-9]+/g;
 
   // yt-dlp 포맷 문자열
-  //   - 영상: 워터마크 없는 최고화질 muxed (영상+음성 합쳐진 포맷 → ffmpeg 불필요, 즉시 스트리밍)
+  //   - AVC(h264) 우선: TikTok 은 h264 + h265(bytevc1) 를 함께 제공하는 경우가 대부분.
+  //     h264 를 선택하면 서버 HEVC → AVC 변환 없이 즉시 다운로드 (NAS 부하·타임아웃 방지).
+  //     h265 만 제공되는 영상은 서버가 자동 변환.
   //   TikTok 은 오디오 전용 스트림을 제공하지 않으므로(모든 포맷이 muxed) 영상만 지원.
-  const VIDEO_FMT = 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
+  //   주의: TikTok 은 vcodec 을 'avc1...' 이 아니라 'h264' 로 보고하므로 두 표기 모두 필터.
+  const VIDEO_FMT = 'best[ext=mp4][vcodec^=avc][acodec!=none]/best[ext=mp4][vcodec^=h264][acodec!=none]/best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best';
 
   function isValidTiktokUrl(url) {
     return /tiktok\.com/.test(url || '');
