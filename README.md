@@ -87,7 +87,13 @@ WARNING: [youtube] No supported JavaScript runtime could be found...
 ERROR:   [youtube] <id>: This video is not available
 ```
 
-yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그래서 서버에서는 `server.js` 가 모든 yt-dlp 호출에 `--js-runtimes deno,node` 를 붙여 **컨테이너의 node 로도** 챌린지를 풀 수 있게 합니다.
+yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그래서 서버에서는 `server.js` 가 모든 yt-dlp 호출에 아래처럼 런타임을 명시적으로 추가합니다:
+
+```
+--js-runtimes deno --js-runtimes node --js-runtimes bun
+```
+
+> ⚠️ **콤마 나열(`--js-runtimes deno,node`)은 동작하지 않습니다.** yt-dlp 가 인식하지 못하고 기본값(deno 만)으로 되돌아가서, deno 가 없는 컨테이너에서는 여전히 `JS runtimes: none` 이 됩니다. 반드시 플래그를 **여러 번 반복**해야 합니다.
 
 | 환경 | 쓰이는 런타임 | 조건 |
 |---|---|---|
@@ -110,11 +116,13 @@ yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그�
   "ytdlp": "2026.07.04",
   "ffmpeg": "/app/ffmpeg",
   "jsRuntimesOption": true,
-  "jsRuntimes": { "node": "v24.15.0" },
+  "jsRuntimes": "deno-2.7.12, node-24.15.0",
   "youtubeReady": true,
   "hint": null
 }
 ```
+
+`jsRuntimes` 는 추측이 아니라 **yt-dlp 에 직접 물어본 값**입니다 (`yt-dlp -v` 의 `JS runtimes:` 줄, 네트워크 호출 없음). `"none"` 이면 챌린지를 풀 수 없는 상태입니다.
 
 `youtubeReady` 가 `false` 면 YouTube 다운로드가 전부 실패하는 상태이고, `hint` 에 원인이 적혀 있습니다.
 
@@ -213,7 +221,7 @@ const BACKEND = isGitHubPages ? REMOTE_BACKEND : '';
 ### YouTube 만 안 됨 — "사이트를 사용할 수 없음" / 빈 파일이 받아짐
 → 서버에 JS 런타임이 없거나 yt-dlp 가 구버전일 때 나타나는 대표 증상입니다 (인스타그램·틱톡은 멀쩡한 게 특징). `/health` 를 열어 `youtubeReady` 를 확인하세요.
 - `youtubeReady: false` + `jsRuntimesOption: false` → yt-dlp 가 구버전. 최신 바이너리로 교체 후 재빌드/재배포.
-- `youtubeReady: false` + `jsRuntimes: {}` → JS 런타임 없음. Node 24 이상으로 올리거나 deno 설치.
+- `youtubeReady: false` + `jsRuntimes: "none"` → JS 런타임 없음. Node 24 이상으로 올리거나 deno 설치.
 - 자세한 내용은 [YouTube JS 런타임](#youtube-js-런타임-필수) 참고.
 
 ### 로컬 Windows에서 yt-dlp 실행 실패

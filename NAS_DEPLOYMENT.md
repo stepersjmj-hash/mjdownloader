@@ -45,7 +45,7 @@ YouTube는 720p 이상에서 영상/음성을 분리 스트림으로 제공하�
 
 yt-dlp 는 YouTube 서명(nsig) 챌린지를 풀기 위해 **JS 런타임**이 필요합니다. 없으면 화질과 무관하게 모든 YouTube 요청이 `This video is not available` 로 즉시 실패합니다 (인스타그램·틱톡은 정상이라 원인 파악이 어렵습니다).
 
-- 이미지에 deno 를 넣으면 빌드 중 네트워크가 필요해지므로 **컨테이너에 이미 있는 node** 를 JS 런타임으로 씁니다 (`server.js` 가 `--js-runtimes deno,node` 를 붙임).
+- 이미지에 deno 를 넣으면 빌드 중 네트워크가 필요해지므로 **컨테이너에 이미 있는 node** 를 JS 런타임으로 씁니다 (`server.js` 가 `--js-runtimes deno --js-runtimes node --js-runtimes bun` 을 붙임 — 콤마 나열은 yt-dlp 가 인식하지 못하므로 플래그 반복이 필수).
 - yt-dlp 는 node 를 `node --permission` 으로 띄우는데, 이 플래그가 정식으로 들어간 것이 **Node 24** 입니다. `node:20-slim` / `node:22-slim` 으로 내리면 YouTube 가 전부 실패합니다.
 
 이 네 가지가 설계의 핵심입니다.
@@ -195,14 +195,14 @@ node -e "require('http').get('http://127.0.0.1:3100/health',r=>r.pipe(process.st
   "ytdlp": "2026.xx.xx",
   "ffmpeg": "/app/ffmpeg",
   "jsRuntimesOption": true,
-  "jsRuntimes": { "node": "v24.x.x" },
+  "jsRuntimes": "node-24.x.x",
   "youtubeReady": true
 }
 ```
 
 `youtubeReady` 가 `false` 면 YouTube 다운로드가 전부 실패합니다. `hint` 필드에 원인이 적혀 있습니다:
 - `jsRuntimesOption: false` → yt-dlp 가 구버전 (설치 절차 1번 다시)
-- `jsRuntimes: {}` → Node 24 미만 (Dockerfile 의 베이스 이미지 확인)
+- `jsRuntimes: "none"` → yt-dlp 가 node 를 인식하지 못함 (Dockerfile 베이스 이미지가 `node:24-slim` 인지 확인)
 
 **LAN에서 브라우저 접속**: `http://NAS내부IP:3100` → Reelsnap 페이지 뜨면 성공. 진단은 `http://NAS내부IP:3100/health`.
 
@@ -333,7 +333,7 @@ ERROR:   [youtube] <id>: This video is not available
 | `/health` 값 | 원인 | 해결 |
 |---|---|---|
 | `jsRuntimesOption: false` | yt-dlp 구버전 | `yt-dlp_linux` 최신 교체 후 재빌드 |
-| `jsRuntimes: {}` | Node 24 미만 | `Dockerfile` 이 `node:24-slim` 인지 확인 후 재빌드 |
+| `jsRuntimes: "none"` | Node 24 미만 | `Dockerfile` 이 `node:24-slim` 인지 확인 후 재빌드 |
 
 둘 다 정상인데 실패하면 컨테이너 로그(`Container Manager → 컨테이너 → 로그`)의 `[yt-dlp]` 줄을 확인하세요.
 

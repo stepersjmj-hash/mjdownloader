@@ -63,11 +63,43 @@ console.log(`[ffmpeg] 경로: ${FFMPEG_PATH || '(없음 — YouTube 720p+ 불가
 // 최근 yt-dlp 는 YouTube 서명(nsig) 해제를 위해 외부 JS 런타임이 필요하다.
 // 기본 활성 런타임은 deno 뿐이라, deno 가 없는 서버(NAS/Render 컨테이너)에서는
 // 모든 YouTube 요청이 "This video is not available" 로 즉시 실패한다.
-//   → --js-runtimes 로 deno + node 를 함께 허용해 컨테이너의 node 로도 풀게 한다.
+//   → --js-runtimes 로 deno / node / bun 을 모두 허용해 컨테이너의 node 로도 풀게 한다.
 //     (node 로 풀 때 yt-dlp 가 `node --permission` 을 쓰므로 Node 24 이상 필요)
+//
+// ⚠ 이 옵션은 콤마 나열('deno,node')이 아니라 플래그를 여러 번 반복해야 한다.
+//   콤마로 주면 yt-dlp 가 인식하지 못하고 기본값(deno 만)으로 되돌아가서,
+//   deno 가 없는 컨테이너에서는 여전히 'JS runtimes: none' 이 된다.
 // 구버전 yt-dlp 에는 이 옵션 자체가 없어서, 시작 시 --help 로 지원 여부를 1회 검사한다.
-const JS_RUNTIMES = 'deno,node';
+const JS_RUNTIMES = ['deno', 'node', 'bun'];   // yt-dlp 우선순위 순서
 let JS_RUNTIMES_SUPPORTED = false;
+let JS_RUNTIMES_DETECTED  = 'none';            // yt-dlp 가 실제로 인식한 런타임 (기동 시 조회)
+
+function jsRuntimeArgs() {
+  if (!JS_RUNTIMES_SUPPORTED) return [];
+  return JS_RUNTIMES.flatMap(rt => ['--js-runtimes', rt]);
+}
+
+// yt-dlp 가 실제로 어떤 JS 런타임을 인식하는지 직접 물어본다.
+// -v 는 추출 전에 '[debug] JS runtimes: ...' 를 찍으므로, 존재하지 않는 file:// URL 을
+// 주면 네트워크 없이 그 한 줄만 얻을 수 있다. (종료코드는 무시)
+function probeJsRuntimes() {
+  return new Promise((resolve) => {
+    const args = ['-v', '--simulate', ...jsRuntimeArgs(), 'file:///__ytdlp_runtime_probe__'];
+    let out = '', done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let child;
+    try { child = spawn(YT_DLP_BIN, args); } catch { return finish('none'); }
+    const timer = setTimeout(() => { try { child.kill(); } catch {} finish('none'); }, 15000);
+    child.stdout.on('data', d => { out += d; });
+    child.stderr.on('data', d => { out += d; });
+    child.on('error', () => { clearTimeout(timer); finish('none'); });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const m = out.match(/JS runtimes:\s*(.+)/);
+      finish(m ? m[1].trim() : 'none');
+    });
+  });
+}
 
 function detectJsRuntimesOption() {
   return new Promise((resolve) => {
@@ -104,8 +136,8 @@ function isYoutubePlaylistUrl(url) {
 // 모든 yt-dlp 호출에 공통으로 붙는 인자
 function commonYtDlpArgs(url) {
   const args = [];
-  if (JS_RUNTIMES_SUPPORTED) args.push('--js-runtimes', JS_RUNTIMES);
-  if (FFMPEG_PATH)           args.push('--ffmpeg-location', FFMPEG_PATH);
+  args.push(...jsRuntimeArgs());
+  if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
   if (isYoutubePlaylistUrl(url)) args.push('--no-playlist');
   return args;
 }
@@ -570,17 +602,9 @@ const server = http.createServer(async (req, res) => {
   else if (pathname === '/health') {
     // 진단용 — yt-dlp 버전, JS 런타임 감지 결과, ffmpeg 유무를 한눈에 확인.
     // YouTube 가 안 될 때 여기부터 본다 (youtubeReady 가 false 면 그게 원인).
-    const [ytdlpVer, denoVer, bunVer] = await Promise.all([
-      probeBin(YT_DLP_BIN, ['--version']),
-      probeBin('deno', ['--version']),
-      probeBin('bun', ['--version']),
-    ]);
-    const runtimes = {};
-    if (denoVer) runtimes.deno = denoVer.split('\n')[0];
-    if (bunVer)  runtimes.bun  = bunVer;
-    const nodeMajor = parseInt((process.versions.node || '0').split('.')[0], 10);
-    if (nodeMajor >= 24) runtimes.node = process.version;   // yt-dlp 가 쓰는 --permission 은 Node 24+
-    const youtubeReady = JS_RUNTIMES_SUPPORTED && Object.keys(runtimes).length > 0;
+    const ytdlpVer     = await probeBin(YT_DLP_BIN, ['--version']);
+    const runtimes     = await probeJsRuntimes();   // yt-dlp 에 직접 물어본 현재 상태
+    const youtubeReady = JS_RUNTIMES_SUPPORTED && !!runtimes && runtimes !== 'none';
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
       ok: !!ytdlpVer,
@@ -590,12 +614,12 @@ const server = http.createServer(async (req, res) => {
       ytdlpPath: YT_DLP_BIN,
       ffmpeg: FFMPEG_PATH || null,
       jsRuntimesOption: JS_RUNTIMES_SUPPORTED,   // yt-dlp 가 --js-runtimes 를 지원하는가
-      jsRuntimes: runtimes,                      // 실제로 쓸 수 있는 JS 런타임
+      jsRuntimes: runtimes,                      // yt-dlp 가 인식한 런타임 ('none' 이면 없음)
       youtubeReady,                              // false 면 YouTube 다운로드가 전부 실패한다
       hint: youtubeReady ? null
         : (!ytdlpVer ? 'yt-dlp 를 찾을 수 없습니다.'
         : !JS_RUNTIMES_SUPPORTED ? 'yt-dlp 가 구버전입니다 — 최신 바이너리로 교체하세요.'
-        : 'JS 런타임이 없습니다 — deno 를 설치하거나 Node 24 이상에서 실행하세요.'),
+        : 'yt-dlp 가 인식하는 JS 런타임이 없습니다 — deno 설치 또는 Node 24 이상 필요.'),
     }, null, 2));
 
   } else if (pathname === '/msec') {
@@ -658,17 +682,16 @@ const server = http.createServer(async (req, res) => {
     console.log(`✅ yt-dlp ${v} 감지됨`);
   }
 
-  // YouTube 전용: JS 챌린지 런타임 준비 상태 점검
+  // YouTube 전용: JS 챌린지 런타임 준비 상태 점검 (yt-dlp 에 직접 물어봄)
   JS_RUNTIMES_SUPPORTED = v ? await detectJsRuntimesOption() : false;
-  const nodeMajor = parseInt((process.versions.node || '0').split('.')[0], 10);
-  const hasDeno   = !!(await probeBin('deno', ['--version']));
+  JS_RUNTIMES_DETECTED  = JS_RUNTIMES_SUPPORTED ? await probeJsRuntimes() : 'none';
   if (v && !JS_RUNTIMES_SUPPORTED) {
     console.log('⚠️  yt-dlp 가 --js-runtimes 를 지원하지 않습니다 (구버전).');
     console.log('   → YouTube 다운로드가 전부 실패합니다. yt-dlp 를 최신으로 교체하세요.');
-  } else if (hasDeno || nodeMajor >= 24) {
-    console.log(`✅ YouTube JS 런타임: ${hasDeno ? 'deno' : `node ${process.version}`}`);
-  } else {
-    console.log(`⚠️  JS 런타임이 없습니다 (node ${process.version}, deno 없음).`);
+  } else if (JS_RUNTIMES_DETECTED !== 'none') {
+    console.log(`✅ YouTube JS 런타임: ${JS_RUNTIMES_DETECTED}`);
+  } else if (v) {
+    console.log(`⚠️  yt-dlp 가 인식하는 JS 런타임이 없습니다 (node ${process.version}).`);
     console.log('   → YouTube 다운로드가 전부 실패합니다. deno 설치 또는 Node 24 이상 필요.');
   }
 
