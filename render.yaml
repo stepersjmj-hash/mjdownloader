@@ -5,3 +5,8 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node server.js
+    envVars:
+      # Node 24 필수 — yt-dlp 가 YouTube JS 챌린지 해제에 `node --permission` 을 쓴다.
+      # 낮추면 YouTube 다운로드가 전부 "This video is not available" 로 실패한다.
+      - key: NODE_VERSION
+        value: "24"

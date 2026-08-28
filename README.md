@@ -4,7 +4,9 @@
 
 **지원 플랫폼**: Instagram (릴스, 게시물, 이미지), YouTube (영상, 쇼츠, 오디오 추출), TikTok (영상, 워터마크 없음, 일괄 다운로드).
 
-**코덱 호환성**: 다운로드되는 mp4 는 항상 AVC(H.264) 로 보장됩니다. AVC 포맷이 있으면 변환 없이 우선 선택하고, HEVC(H.265) 만 제공되는 영상은 서버에서 ffmpeg 로 자동 변환 후 전송합니다. (하단 [HEVC → AVC 자동 변환](#hevc--avc-자동-변환) 참고)
+**코덱 호환성**: 다운로드되는 mp4 는 AVC(H.264) 를 우선합니다. AVC 포맷이 있으면 변환 없이 그것을 선택하고, HEVC(H.265) 만 제공되는 영상은 서버에서 ffmpeg 로 자동 변환 후 전송합니다. (하단 [HEVC → AVC 자동 변환](#hevc--avc-자동-변환) 참고)
+
+**요구 환경**: 서버는 **Node 24 이상** + **최신 yt-dlp** 가 필요합니다. YouTube 가 서명 해제에 JS 챌린지를 쓰기 때문입니다. (하단 [YouTube JS 런타임](#youtube-js-런타임-필수) 참고)
 
 ## 접속 URL
 
@@ -17,7 +19,7 @@
 ## 기술 스택
 
 - **프론트엔드**: HTML + Vanilla JavaScript + CSS (프레임워크 없음)
-- **백엔드**: Node.js (내장 `http` 모듈만 사용, 외부 의존성 0개)
+- **백엔드**: Node.js 24+ (내장 `http` 모듈만 사용, 외부 의존성 0개)
 - **미디어 추출**: [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - **배포**: Render (자동) + Synology NAS Docker (수동)
 
@@ -63,6 +65,8 @@
 
 - **360p, Audio**: ffmpeg 없이 즉시 다운로드 시작 (빠름)
 - **720p 이상**: 영상+음성 분리 스트림을 ffmpeg로 병합 — 1~3분 소요 (영상 길이에 따라)
+- **재생목록/믹스 링크 지원**: `&list=RD...` 가 붙은 링크(자동 재생 믹스)를 넣어도 **그 영상 하나만** 받습니다 (`--no-playlist`)
+- **코덱**: 360p / 720p / 1080p 는 AVC(H.264) 를 우선 선택합니다. **Best(4K) 는 예외** — 유튜브가 AVC 를 1080p 까지만 제공하므로 VP9 또는 AV1 로 받아집니다. 편집기·구형 플레이어 호환이 중요하면 1080p 이하를 고르세요.
 
 ### TikTok 탭
 1. TikTok 앱/웹에서 영상 링크 복사 (`www.tiktok.com/@user/video/...`)
@@ -73,6 +77,46 @@
 **일괄 다운로드**: 텍스트를 통째로 붙여넣으면 TikTok URL을 자동 추출(쿼리스트링·중복 제거)해 체크박스 목록으로 보여주고, 선택한 것들을 순차 저장합니다.
 
 - TikTok 은 영상+음성이 합쳐진(muxed) 포맷만 제공하므로 **ffmpeg 없이 즉시 다운로드**됩니다. 오디오 전용 추출은 지원하지 않습니다(별도 오디오 스트림 없음).
+
+## YouTube JS 런타임 (필수)
+
+최근 yt-dlp 는 YouTube 의 서명(nsig) 챌린지를 풀기 위해 **외부 JavaScript 런타임**이 필요합니다. 없으면 화질과 무관하게 **모든 YouTube 요청이 즉시 실패**합니다:
+
+```
+WARNING: [youtube] No supported JavaScript runtime could be found...
+ERROR:   [youtube] <id>: This video is not available
+```
+
+yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그래서 서버에서는 `server.js` 가 모든 yt-dlp 호출에 `--js-runtimes deno,node` 를 붙여 **컨테이너의 node 로도** 챌린지를 풀 수 있게 합니다.
+
+| 환경 | 쓰이는 런타임 | 조건 |
+|---|---|---|
+| 로컬 Windows | deno (설치돼 있으면) 또는 node | `winget install DenoLand.Deno` 또는 Node 24+ |
+| NAS Docker | node (이미지 내장) | 베이스 이미지 `node:24-slim` |
+| Render | node | `render.yaml` 의 `NODE_VERSION=24` |
+
+**Node 24 이상이 필요한 이유**: yt-dlp 가 node 를 샌드박스로 띄울 때 `node --permission` 을 쓰는데, 이 플래그가 정식으로 들어간 것이 Node 24 입니다. Node 20/22 는 인식하지 못해 실패합니다.
+
+구버전 yt-dlp 에는 `--js-runtimes` 옵션 자체가 없으므로, 서버는 기동 시 `yt-dlp --help` 로 지원 여부를 한 번 검사하고 지원할 때만 옵션을 붙입니다.
+
+### 상태 확인 — `/health`
+
+서버가 준비됐는지는 브라우저로 `/health` 를 열어 확인합니다 (예: `https://stepersjmj.synology.me:8443/health`).
+
+```json
+{
+  "ok": true,
+  "node": "v24.15.0",
+  "ytdlp": "2026.07.04",
+  "ffmpeg": "/app/ffmpeg",
+  "jsRuntimesOption": true,
+  "jsRuntimes": { "node": "v24.15.0" },
+  "youtubeReady": true,
+  "hint": null
+}
+```
+
+`youtubeReady` 가 `false` 면 YouTube 다운로드가 전부 실패하는 상태이고, `hint` 에 원인이 적혀 있습니다.
 
 ## HEVC → AVC 자동 변환
 
@@ -87,6 +131,7 @@
 - 코덱 미상 mp4 와 `/quickstream`(일괄 다운로드)은 항상 temp 파일 경유로 코덱 검사
 - 변환 실패 시 원본(HEVC)이라도 전송해서 다운로드 자체는 성공시킴
 - **ffmpeg 이 없는 환경**(Render 무료 플랜 등)에서는 변환이 생략되고 원본 코덱 그대로 전송됨
+- **AV1 / VP9 은 변환 대상이 아님** — 변환은 HEVC 만 대상으로 합니다. YouTube `Best(4K)` 로 받은 AV1/VP9 영상은 그대로 전송됩니다 (4K 재인코딩은 NAS 에 과부하)
 - 변환은 CPU 부하가 큼 — 1분 영상 기준 PC 수십 초, NAS(DS920+) 수 분 소요 가능. 다운로드 시작이 그만큼 늦어짐
 - **동시 변환 제한(2개)**: 일괄 다운로드로 변환 요청이 몰리면 2개씩만 실행하고 나머지는 대기 — NAS CPU 마비 방지
 - **NAS 리버스 프록시 타임아웃 주의**: 변환 대기 중엔 응답 바이트가 없으므로, Synology 리버스 프록시 기본 타임아웃(60초)이면 연결이 끊겨 "알 수 없는 서버 오류" 가 발생. [NAS_DEPLOYMENT.md](./NAS_DEPLOYMENT.md)의 리버스 프록시 설정에서 600초로 연장 필요
@@ -107,7 +152,17 @@ node server.js
 
 `package.json` 에 외부 의존성이 없어 `npm install` 이 필수는 아닙니다. postinstall 훅은 Windows 환경에서 스킵됩니다 (`scripts/install-ytdlp.js` 참고).
 
-서버 기동 로그에서 `[yt-dlp]` 와 `[ffmpeg]` 경로가 잘 감지됐는지 확인. ffmpeg 이 없으면 YouTube 360p / 오디오까지만 작동합니다.
+서버 기동 로그에서 `[yt-dlp]` / `[ffmpeg]` 경로와 `YouTube JS 런타임` 줄이 정상인지 확인합니다:
+
+```
+✅ yt-dlp 2026.07.04 감지됨
+✅ YouTube JS 런타임: deno
+✅ http://localhost:3000   (진단: /health)
+```
+
+- ffmpeg 이 없으면 YouTube 360p / 오디오까지만 작동합니다.
+- `⚠️ JS 런타임이 없습니다` 가 뜨면 YouTube 가 전부 실패합니다 → `winget install DenoLand.Deno` 로 deno 설치, 또는 Node 24 이상으로 실행.
+- **포트 충돌**: 3000 번을 다른 프로그램이 쓰고 있으면 서버가 즉시 죽습니다(`EADDRINUSE`). `$env:PORT=3010; node server.js` 처럼 다른 포트로 띄우세요.
 
 ## 배포 방식
 
@@ -154,6 +209,12 @@ const BACKEND = isGitHubPages ? REMOTE_BACKEND : '';
 
 ### Render에서 다운로드 속도 느림 또는 일괄 다운로드 실패
 → Render 무료 플랜 한계. **NAS URL** (`https://stepersjmj.synology.me:8443/`) 사용 권장.
+
+### YouTube 만 안 됨 — "사이트를 사용할 수 없음" / 빈 파일이 받아짐
+→ 서버에 JS 런타임이 없거나 yt-dlp 가 구버전일 때 나타나는 대표 증상입니다 (인스타그램·틱톡은 멀쩡한 게 특징). `/health` 를 열어 `youtubeReady` 를 확인하세요.
+- `youtubeReady: false` + `jsRuntimesOption: false` → yt-dlp 가 구버전. 최신 바이너리로 교체 후 재빌드/재배포.
+- `youtubeReady: false` + `jsRuntimes: {}` → JS 런타임 없음. Node 24 이상으로 올리거나 deno 설치.
+- 자세한 내용은 [YouTube JS 런타임](#youtube-js-런타임-필수) 참고.
 
 ### 로컬 Windows에서 yt-dlp 실행 실패
 → 프로젝트 루트에 `yt-dlp.exe` 있는지 확인. 없으면 [릴리즈 페이지](https://github.com/yt-dlp/yt-dlp/releases/latest)에서 `yt-dlp.exe` 다운로드.

@@ -59,6 +59,57 @@ if (IS_WIN && fs.existsSync(FFMPEG_WIN)) {
 }
 console.log(`[ffmpeg] 경로: ${FFMPEG_PATH || '(없음 — YouTube 720p+ 불가)'}`);
 
+// ─── YouTube JS 챌린지용 JS 런타임 ───────────────────────
+// 최근 yt-dlp 는 YouTube 서명(nsig) 해제를 위해 외부 JS 런타임이 필요하다.
+// 기본 활성 런타임은 deno 뿐이라, deno 가 없는 서버(NAS/Render 컨테이너)에서는
+// 모든 YouTube 요청이 "This video is not available" 로 즉시 실패한다.
+//   → --js-runtimes 로 deno + node 를 함께 허용해 컨테이너의 node 로도 풀게 한다.
+//     (node 로 풀 때 yt-dlp 가 `node --permission` 을 쓰므로 Node 24 이상 필요)
+// 구버전 yt-dlp 에는 이 옵션 자체가 없어서, 시작 시 --help 로 지원 여부를 1회 검사한다.
+const JS_RUNTIMES = 'deno,node';
+let JS_RUNTIMES_SUPPORTED = false;
+
+function detectJsRuntimesOption() {
+  return new Promise((resolve) => {
+    const child = spawn(YT_DLP_BIN, ['--help']);
+    let out = '';
+    child.stdout.on('data', d => { out += d; });
+    child.on('error', () => resolve(false));
+    child.on('close', () => resolve(out.includes('--js-runtimes')));
+  });
+}
+
+// 실행파일 버전 확인 (없으면 null) — /health 진단용
+function probeBin(bin, args) {
+  return new Promise((resolve) => {
+    let out = '', done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let child;
+    try { child = spawn(bin, args); } catch { return finish(null); }
+    const timer = setTimeout(() => { try { child.kill(); } catch {} finish(null); }, 5000);
+    child.stdout.on('data', d => { out += d; });
+    child.on('error', () => { clearTimeout(timer); finish(null); });
+    child.on('close', (code) => { clearTimeout(timer); finish(code === 0 ? out.trim() : null); });
+  });
+}
+
+// YouTube 믹스/재생목록 링크(?list=RD... 등) 는 재생목록 전체를 먼저 훑어서 느리고
+// 실패 여지가 크다. 단일 영상만 받도록 --no-playlist 를 붙인다.
+function isYoutubePlaylistUrl(url) {
+  if (!url) return false;
+  if (!/youtube\.com|youtu\.be/.test(url)) return false;
+  return /[?&]list=/.test(url);
+}
+
+// 모든 yt-dlp 호출에 공통으로 붙는 인자
+function commonYtDlpArgs(url) {
+  const args = [];
+  if (JS_RUNTIMES_SUPPORTED) args.push('--js-runtimes', JS_RUNTIMES);
+  if (FFMPEG_PATH)           args.push('--ffmpeg-location', FFMPEG_PATH);
+  if (isYoutubePlaylistUrl(url)) args.push('--no-playlist');
+  return args;
+}
+
 // ─── 지원 플랫폼 ──────────────────────────────────────────
 const SUPPORTED_HOSTS = [
   'instagram.com',
@@ -115,8 +166,7 @@ function getMediaInfo(instagramUrl) {
   instagramUrl = normalizeIgUrl(instagramUrl);
   return new Promise((resolve, reject) => {
     // 셸을 거치지 않도록 spawn + 인자 배열 사용 (명령어 인젝션 차단)
-    const args = ['--dump-json', '--no-warnings'];
-    if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
+    const args = ['--dump-json', '--no-warnings', ...commonYtDlpArgs(instagramUrl)];
     args.push(instagramUrl);
     console.log('[yt-dlp] 메타데이터 조회:', instagramUrl);
 
@@ -241,7 +291,7 @@ function handleStream(req, res) {
 
   const args = ['--playlist-items', String(idx), '--format', fmt, '--no-warnings'];
   if (ext === 'mp4')  args.push('--merge-output-format', 'mp4');
-  if (FFMPEG_PATH)    args.push('--ffmpeg-location', FFMPEG_PATH);
+  args.push(...commonYtDlpArgs(igurl));
   args.push('-o', '-', igurl);
 
   const child = spawn(YT_DLP_BIN, args);
@@ -263,10 +313,31 @@ function handleStream(req, res) {
     res.writeHead(200, headers);
   });
 
-  child.stdout.pipe(res);
+  // pipe 의 자동 end 를 끄고 직접 마무리한다.
+  // (자동 end 로 두면 yt-dlp 가 한 바이트도 못 내고 죽어도 응답이 200 + 0바이트로 끝나서,
+  //  브라우저에 빈 파일이 저장되고 실패 원인이 드러나지 않는다.)
+  let exitCode = null, stdoutEnded = false;
+  function finishStream() {
+    if (exitCode === null || !stdoutEnded) return;
+    if (res.writableEnded) return;
+    if (headerSent) {
+      // 이미 헤더/데이터를 보낸 뒤라 500 을 줄 수 없다.
+      // 실패했으면 그냥 end() 하지 말고 연결을 끊어야 브라우저가 '실패'로 처리한다
+      // (end() 로 닫으면 잘린 파일이 정상 완료된 것처럼 저장됨).
+      if (exitCode !== 0) res.destroy(); else res.end();
+      return;
+    }
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(exitCode === 0 ? 'yt-dlp 가 빈 결과를 반환했습니다.' : 'yt-dlp 다운로드 실패');
+  }
+
+  child.stdout.pipe(res, { end: false });
+  child.stdout.on('end', () => { stdoutEnded = true; finishStream(); });
   child.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[yt-dlp]', m); });
-  child.on('error', (e) => { if (!headerSent && !res.headersSent) { res.writeHead(500); res.end(e.message); } });
-  child.on('close', (code) => { if (code !== 0 && !headerSent) { res.writeHead(500); res.end('yt-dlp 실패'); } });
+  child.on('error', (e) => {
+    if (!headerSent && !res.headersSent) { res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(e.message); }
+  });
+  child.on('close', (code) => { exitCode = code; finishStream(); });
   req.on('close', () => child.kill());
 }
 
@@ -346,8 +417,8 @@ function handleStreamTempFile(req, res, opts) {
     '--merge-output-format', 'mp4',
     '--no-warnings',
     '--no-part',
+    ...commonYtDlpArgs(igurl),
   ];
-  if (FFMPEG_PATH) args.push('--ffmpeg-location', FFMPEG_PATH);
   args.push('-o', tmpPath, igurl);
 
   const child = spawn(YT_DLP_BIN, args);
@@ -496,7 +567,38 @@ const server = http.createServer(async (req, res) => {
   if      (pathname === '/thumb')       handleThumb(req, res);
   else if (pathname === '/stream')      handleStream(req, res);
   else if (pathname === '/quickstream') handleQuickStream(req, res);
-  else if (pathname === '/msec') {
+  else if (pathname === '/health') {
+    // 진단용 — yt-dlp 버전, JS 런타임 감지 결과, ffmpeg 유무를 한눈에 확인.
+    // YouTube 가 안 될 때 여기부터 본다 (youtubeReady 가 false 면 그게 원인).
+    const [ytdlpVer, denoVer, bunVer] = await Promise.all([
+      probeBin(YT_DLP_BIN, ['--version']),
+      probeBin('deno', ['--version']),
+      probeBin('bun', ['--version']),
+    ]);
+    const runtimes = {};
+    if (denoVer) runtimes.deno = denoVer.split('\n')[0];
+    if (bunVer)  runtimes.bun  = bunVer;
+    const nodeMajor = parseInt((process.versions.node || '0').split('.')[0], 10);
+    if (nodeMajor >= 24) runtimes.node = process.version;   // yt-dlp 가 쓰는 --permission 은 Node 24+
+    const youtubeReady = JS_RUNTIMES_SUPPORTED && Object.keys(runtimes).length > 0;
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      ok: !!ytdlpVer,
+      platform: process.platform,
+      node: process.version,
+      ytdlp: ytdlpVer || null,
+      ytdlpPath: YT_DLP_BIN,
+      ffmpeg: FFMPEG_PATH || null,
+      jsRuntimesOption: JS_RUNTIMES_SUPPORTED,   // yt-dlp 가 --js-runtimes 를 지원하는가
+      jsRuntimes: runtimes,                      // 실제로 쓸 수 있는 JS 런타임
+      youtubeReady,                              // false 면 YouTube 다운로드가 전부 실패한다
+      hint: youtubeReady ? null
+        : (!ytdlpVer ? 'yt-dlp 를 찾을 수 없습니다.'
+        : !JS_RUNTIMES_SUPPORTED ? 'yt-dlp 가 구버전입니다 — 최신 바이너리로 교체하세요.'
+        : 'JS 런타임이 없습니다 — deno 를 설치하거나 Node 24 이상에서 실행하세요.'),
+    }, null, 2));
+
+  } else if (pathname === '/msec') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ msec: Date.now() / 1000 }));
 
@@ -543,7 +645,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, async () => {
+// 기동 준비 — 리스닝 전에 yt-dlp / JS 런타임 점검을 끝낸다.
+// (listen 후에 검사하면 첫 몇 백 ms 요청이 --js-runtimes 없이 나가 YouTube 가 실패한다)
+(async () => {
   console.log('');
   const v = await checkYtDlp();
   if (!v) {
@@ -552,7 +656,24 @@ server.listen(PORT, async () => {
     console.log('   Render:  render.yaml buildCommand 확인');
   } else {
     console.log(`✅ yt-dlp ${v} 감지됨`);
-    console.log(`✅ http://localhost:${PORT}`);
   }
-  console.log('   종료: Ctrl+C\n');
-});
+
+  // YouTube 전용: JS 챌린지 런타임 준비 상태 점검
+  JS_RUNTIMES_SUPPORTED = v ? await detectJsRuntimesOption() : false;
+  const nodeMajor = parseInt((process.versions.node || '0').split('.')[0], 10);
+  const hasDeno   = !!(await probeBin('deno', ['--version']));
+  if (v && !JS_RUNTIMES_SUPPORTED) {
+    console.log('⚠️  yt-dlp 가 --js-runtimes 를 지원하지 않습니다 (구버전).');
+    console.log('   → YouTube 다운로드가 전부 실패합니다. yt-dlp 를 최신으로 교체하세요.');
+  } else if (hasDeno || nodeMajor >= 24) {
+    console.log(`✅ YouTube JS 런타임: ${hasDeno ? 'deno' : `node ${process.version}`}`);
+  } else {
+    console.log(`⚠️  JS 런타임이 없습니다 (node ${process.version}, deno 없음).`);
+    console.log('   → YouTube 다운로드가 전부 실패합니다. deno 설치 또는 Node 24 이상 필요.');
+  }
+
+  server.listen(PORT, () => {
+    console.log(`✅ http://localhost:${PORT}   (진단: /health)`);
+    console.log('   종료: Ctrl+C\n');
+  });
+})();

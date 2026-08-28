@@ -8,6 +8,6 @@
     "postinstall": "node scripts/install-ytdlp.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   }
 }

@@ -41,7 +41,14 @@ YouTube는 720p 이상에서 영상/음성을 분리 스트림으로 제공하�
 - johnvansickle 의 static build 바이너리 사용 (Python 의존성 없음)
 - 이미지에 `COPY` 후 `chmod +x`
 
-이 세 가지가 설계의 핵심입니다.
+### 4) 베이스 이미지 `node:24-slim` (Node 24 고정)
+
+yt-dlp 는 YouTube 서명(nsig) 챌린지를 풀기 위해 **JS 런타임**이 필요합니다. 없으면 화질과 무관하게 모든 YouTube 요청이 `This video is not available` 로 즉시 실패합니다 (인스타그램·틱톡은 정상이라 원인 파악이 어렵습니다).
+
+- 이미지에 deno 를 넣으면 빌드 중 네트워크가 필요해지므로 **컨테이너에 이미 있는 node** 를 JS 런타임으로 씁니다 (`server.js` 가 `--js-runtimes deno,node` 를 붙임).
+- yt-dlp 는 node 를 `node --permission` 으로 띄우는데, 이 플래그가 정식으로 들어간 것이 **Node 24** 입니다. `node:20-slim` / `node:22-slim` 으로 내리면 YouTube 가 전부 실패합니다.
+
+이 네 가지가 설계의 핵심입니다.
 
 ## 설치 절차
 
@@ -53,6 +60,8 @@ https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
 ```
 
 파일명을 **`yt-dlp`** (확장자 없음) 로 변경. 탐색기에서 확장자 표시를 켜두고 `.txt` 등이 붙지 않도록 확인.
+
+> ⚠️ **재빌드할 때마다 최신으로 다시 받으세요.** 이 바이너리는 이미지에 통째로 굽히므로 자동 업데이트되지 않습니다. YouTube 는 추출 방식이 자주 바뀌어서, 오래된 yt-dlp 는 YouTube 부터 조용히 전부 실패합니다. 또한 `--js-runtimes` 옵션을 지원하는 버전(2025년 이후)이어야 YouTube 가 동작합니다.
 
 ### 2. ffmpeg Linux 바이너리 다운로드 (YouTube 720p+ 필요 시)
 
@@ -120,6 +129,7 @@ reelsnap/
 ├── app.js
 ├── app_instagram.js
 ├── app_youtube.js
+├── app_tiktok.js
 ├── style.css
 ├── yt-dlp                    ← 1단계에서 다운받은 Linux 바이너리
 ├── ffmpeg                    ← 2단계에서 다운받은 Linux 바이너리 (선택)
@@ -170,9 +180,31 @@ node -e "require('dns').lookup('www.instagram.com',(e,a)=>console.log(e||a))"
 # 3. 서버 응답 테스트
 node -e "require('http').get('http://127.0.0.1:3100/msec',r=>r.pipe(process.stdout))"
 # → {"msec":...} JSON 출력되면 정상
+
+# 4. YouTube 준비 상태 확인 (가장 중요)
+node -e "require('http').get('http://127.0.0.1:3100/health',r=>r.pipe(process.stdout))"
+# → "youtubeReady": true 이면 정상
 ```
 
-**LAN에서 브라우저 접속**: `http://NAS내부IP:3100` → Reelsnap 페이지 뜨면 성공.
+`/health` 응답 예시:
+
+```json
+{
+  "ok": true,
+  "node": "v24.x.x",
+  "ytdlp": "2026.xx.xx",
+  "ffmpeg": "/app/ffmpeg",
+  "jsRuntimesOption": true,
+  "jsRuntimes": { "node": "v24.x.x" },
+  "youtubeReady": true
+}
+```
+
+`youtubeReady` 가 `false` 면 YouTube 다운로드가 전부 실패합니다. `hint` 필드에 원인이 적혀 있습니다:
+- `jsRuntimesOption: false` → yt-dlp 가 구버전 (설치 절차 1번 다시)
+- `jsRuntimes: {}` → Node 24 미만 (Dockerfile 의 베이스 이미지 확인)
+
+**LAN에서 브라우저 접속**: `http://NAS내부IP:3100` → Reelsnap 페이지 뜨면 성공. 진단은 `http://NAS내부IP:3100/health`.
 
 ### 6. Synology 방화벽 규칙 추가 (필요시)
 
@@ -256,6 +288,9 @@ LTE/5G 등 집 외부 망에서 접속해서 Reelsnap 페이지가 뜨고 다운
 2. 파일명을 `yt-dlp` 로 변경
 3. NAS `/docker/reelsnap/yt-dlp` 덮어쓰기
 4. Container Manager에서 **빌드** 재실행
+5. 재시작 후 `http://NAS내부IP:3100/health` 로 `youtubeReady: true` 확인
+
+> 소스만 바꾸고 재빌드해도 yt-dlp 는 **옛날 파일 그대로** 남습니다. YouTube 관련 작업이면 3번을 반드시 같이 하세요.
 
 **ffmpeg** (자주 업데이트할 필요 없음):
 - johnvansickle static build 재다운로드 → `ffmpeg` 바이너리 교체 → 재빌드
@@ -283,6 +318,24 @@ sudo docker inspect reelsnap | grep NetworkMode
 
 ### Let's Encrypt 인증서 발급 시 "이 도메인 이름의 유효성을 검사할 수 없습니다"
 Synology DDNS는 계정당 하나의 호스트명만 등록 가능. 서브도메인(`reelsnap.xxx.synology.me`) 이 자동 등록되지 않아 검증 실패. **포트 분리 방식**(`xxx.synology.me:8443`) 사용 → 기존 인증서 재사용으로 해결.
+
+### YouTube 만 전부 실패 (인스타·틱톡은 정상)
+
+증상: 화질과 무관하게 3~4초 만에 `yt-dlp 다운로드 실패`(HTTP 500) 가 뜨거나, 오디오는 **0바이트 파일**이 받아짐. 컨테이너 로그에는:
+
+```
+WARNING: [youtube] No supported JavaScript runtime could be found...
+ERROR:   [youtube] <id>: This video is not available
+```
+
+원인은 둘 중 하나입니다. `/health` 로 구분하세요:
+
+| `/health` 값 | 원인 | 해결 |
+|---|---|---|
+| `jsRuntimesOption: false` | yt-dlp 구버전 | `yt-dlp_linux` 최신 교체 후 재빌드 |
+| `jsRuntimes: {}` | Node 24 미만 | `Dockerfile` 이 `node:24-slim` 인지 확인 후 재빌드 |
+
+둘 다 정상인데 실패하면 컨테이너 로그(`Container Manager → 컨테이너 → 로그`)의 `[yt-dlp]` 줄을 확인하세요.
 
 ### 일괄 다운로드가 여전히 실패하면
 NAS URL이 아니라 Render URL로 접속하고 있을 가능성. URL이 `https://stepersjmj.synology.me:8443/` 인지 확인. 브라우저 북마크가 구 URL을 가리키고 있을 수도 있음.

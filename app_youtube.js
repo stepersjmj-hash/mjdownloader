@@ -15,10 +15,15 @@
   //   - 360p는 ffmpeg 없이 가능 (muxed 포맷)
   //   - 720p 이상은 bv+ba 분리 → ffmpeg로 merge 필요
   //   - audio 는 m4a 네이티브
+  //
+  // 코덱: mp4 컨테이너에는 AVC(H.264) 외에 AV1 도 들어간다. 유튜브는 720p 에도
+  // AV1(format 398) 을 주는 경우가 많은데, 일부 플레이어/편집기가 재생을 못 한다.
+  // 그래서 360/720/1080 은 vcodec^=avc1 을 1순위로 두고, AVC 가 없을 때만 폴백한다.
+  // 'best'(4K) 는 유튜브가 AVC 를 1080p 까지만 제공하므로 예외 — VP9/AV1 이 될 수 있다.
   const QUALITY_MAP = {
-    '360':   'best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360]',
-    '720':   'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
-    '1080':  'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
+    '360':   'best[height<=360][vcodec^=avc1][acodec!=none]/best[height<=360][ext=mp4][vcodec!=none][acodec!=none]/best[height<=360]',
+    '720':   'bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+    '1080':  'bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]',
     'best':  'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     'audio': 'bestaudio[ext=m4a]/bestaudio',
   };
