@@ -13,7 +13,7 @@
 | 환경 | URL | 용도 |
 |---|---|---|
 | NAS (주 서버) | https://stepersjmj.synology.me:8443/ | 메인 서비스 — 빠름, 일괄 다운로드 안정적 |
-| Render (백업) | https://mjdownloader-fo5w.onrender.com/ | NAS 점검 시 폴백, 자동 배포 |
+| Render (백업) | https://mjdownloader-fo5w.onrender.com/ | NAS 점검 시 폴백, 자동 배포 — **YouTube 불가** (아래 참고) |
 | GitHub Pages | https://stepersjmj-hash.github.io/mjdownloader/ | 정적 프론트 — API는 Render 호출 |
 
 ## 기술 스택
@@ -99,7 +99,7 @@ yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그�
 |---|---|---|
 | 로컬 Windows | deno (설치돼 있으면) 또는 node | `winget install DenoLand.Deno` 또는 Node 24+ |
 | NAS Docker | node (이미지 내장) | 베이스 이미지 `node:24-slim` |
-| Render | node | `render.yaml` 의 `NODE_VERSION=24` |
+| Render | node / bun | `render.yaml` 의 `NODE_VERSION=24` — 단, YouTube 는 IP 차단으로 불가 |
 
 **Node 24 이상이 필요한 이유**: yt-dlp 가 node 를 샌드박스로 띄울 때 `node --permission` 을 쓰는데, 이 플래그가 정식으로 들어간 것이 Node 24 입니다. Node 20/22 는 인식하지 못해 실패합니다.
 
@@ -125,6 +125,20 @@ yt-dlp 가 기본으로 활성화하는 런타임은 **deno 뿐**입니다. 그�
 `jsRuntimes` 는 추측이 아니라 **yt-dlp 에 직접 물어본 값**입니다 (`yt-dlp -v` 의 `JS runtimes:` 줄, 네트워크 호출 없음). `"none"` 이면 챌린지를 풀 수 없는 상태입니다.
 
 `youtubeReady` 가 `false` 면 YouTube 다운로드가 전부 실패하는 상태이고, `hint` 에 원인이 적혀 있습니다.
+
+### Render 에서는 YouTube 를 쓸 수 없습니다
+
+JS 런타임이 정상(`youtubeReady: true`)이어도 Render 에서는 YouTube 가 아래 오류로 실패합니다:
+
+```
+ERROR: [youtube] <id>: Sign in to confirm you're not a bot.
+```
+
+YouTube 가 **데이터센터 IP 를 봇으로 차단**하기 때문이며, 쿠키를 넘기지 않는 한 우회할 수 없습니다. (계정 쿠키를 클라우드 호스트에 두는 것은 계정 정지 위험이 있어 적용하지 않았습니다.)
+
+- **YouTube 는 NAS 서버 또는 로컬**에서 받으세요 — 가정용 IP 라 차단되지 않습니다.
+- Render 는 Instagram / TikTok 백업 용도로만 유효합니다.
+- 이 오류와 `This video is not available` 은 원인이 다릅니다. 후자가 JS 런타임 문제입니다.
 
 ## HEVC → AVC 자동 변환
 
@@ -223,6 +237,9 @@ const BACKEND = isGitHubPages ? REMOTE_BACKEND : '';
 - `youtubeReady: false` + `jsRuntimesOption: false` → yt-dlp 가 구버전. 최신 바이너리로 교체 후 재빌드/재배포.
 - `youtubeReady: false` + `jsRuntimes: "none"` → JS 런타임 없음. Node 24 이상으로 올리거나 deno 설치.
 - 자세한 내용은 [YouTube JS 런타임](#youtube-js-런타임-필수) 참고.
+
+### Render 에서만 YouTube 가 "Sign in to confirm you're not a bot" 으로 실패
+→ 코드 문제가 아니라 YouTube 의 데이터센터 IP 차단입니다. NAS(`https://stepersjmj.synology.me:8443/`) 또는 로컬 서버를 사용하세요.
 
 ### 로컬 Windows에서 yt-dlp 실행 실패
 → 프로젝트 루트에 `yt-dlp.exe` 있는지 확인. 없으면 [릴리즈 페이지](https://github.com/yt-dlp/yt-dlp/releases/latest)에서 `yt-dlp.exe` 다운로드.
